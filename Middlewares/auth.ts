@@ -19,6 +19,7 @@ declare global {
         _id: string;
         role: string;
         email: string;
+        medicineStoreId?: string;
       };
     }
   }

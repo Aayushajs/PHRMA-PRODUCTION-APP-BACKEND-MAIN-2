@@ -108,7 +108,7 @@ class MailClient {
   public async sendOTP(email: string): Promise<MailResponse> {
     try {
       const response = await this.client.post('/send-otp', { email });
-      
+
       return {
         success: true,
         message: response.data.message || 'OTP sent successfully',
@@ -119,6 +119,42 @@ class MailClient {
       return this.handleError(error as AxiosError, 'sendOTP');
     }
   }
+
+  /**
+   * Send Custom OTP Email
+   * Send pre-generated OTP to user's email
+   * 
+   * @param email - Recipient email address
+   * @param otp - Pre-generated OTP to send
+   * @returns Promise with mail response including provider info
+   * 
+   * @example
+   * ```typescript
+   * const otp = '123456';
+   * const result = await mailClient.sendCustomOTP('user@example.com', otp);
+   * if (result.success) {
+   *   console.log('OTP sent via:', result.data?.provider);
+   * }
+   * ```
+   */
+  public async sendCustomOTP(email: string, otp: string): Promise<MailResponse> {
+    try {
+      // Try the correct endpoint - check Service 1 for the actual path
+      // Common alternatives: /send-otp, /otp/send, /custom-otp
+      const response = await this.client.post('/send-otp', { 
+        email,
+        otp 
+      });
+
+      return {
+        success: true,
+        message: response.data.message || 'OTP sent successfully',
+        data: response.data.data,
+        statusCode: response.status,
+      };
+    } catch (error) {
+      return this.handleError(error as AxiosError, 'sendCustomOTP');
+    }  }
 
   /**
    * Send Welcome Email
@@ -135,7 +171,7 @@ class MailClient {
   public async sendWelcomeEmail(email: string): Promise<MailResponse> {
     try {
       const response = await this.client.post('/send-welcome', { email });
-      
+
       return {
         success: true,
         message: response.data.message || 'Welcome email sent successfully',
@@ -149,20 +185,51 @@ class MailClient {
 
   /**
    * Send Password Reset Confirmation
-   * Auto-fetches user name and sends password reset confirmation email
+   * Sends beautiful HTML email confirming password reset with security details
    * 
    * @param email - Recipient email address
+   * @param options - Optional security and user details
+   * @param options.userName - User's name for personalization
+   * @param options.resetTime - When password was reset (defaults to now)
+   * @param options.ipAddress - IP address from where reset was done
+   * @param options.deviceInfo - Device/browser information
+   * @param options.location - Approximate location (city, country)
    * @returns Promise with mail response
    * 
    * @example
    * ```typescript
+   * // Basic usage
    * await mailClient.sendPasswordResetConfirmation('user@example.com');
+   * 
+   * // With full security details
+   * await mailClient.sendPasswordResetConfirmation('user@example.com', {
+   *   userName: 'John Doe',
+   *   ipAddress: '192.168.1.1',
+   *   deviceInfo: 'Chrome on Windows',
+   *   location: 'Mumbai, India'
+   * });
    * ```
    */
-  public async sendPasswordResetConfirmation(email: string): Promise<MailResponse> {
+  public async sendPasswordResetConfirmation(
+    email: string,
+    options?: {
+      userName?: string;
+      resetTime?: Date;
+      ipAddress?: string;
+      deviceInfo?: string;
+      location?: string;
+    }
+  ): Promise<MailResponse> {
     try {
-      const response = await this.client.post('/send-password-reset-confirmation', { email });
-      
+      const response = await this.client.post('/send-password-reset-confirmation', { 
+        email,
+        userName: options?.userName,
+        resetTime: options?.resetTime || new Date(),
+        ipAddress: options?.ipAddress,
+        deviceInfo: options?.deviceInfo,
+        location: options?.location,
+      });
+
       return {
         success: true,
         message: response.data.message || 'Password reset confirmation sent successfully',
@@ -202,7 +269,7 @@ class MailClient {
         subject,
         message,
       });
-      
+
       return {
         success: true,
         message: response.data.message || 'Notification sent successfully',
@@ -243,7 +310,7 @@ class MailClient {
         subject,
         message,
       });
-      
+
       return {
         success: true,
         message: response.data.message || 'Bulk notifications sent successfully',
@@ -263,7 +330,7 @@ class MailClient {
   public async healthCheck(): Promise<HealthCheckResponse> {
     try {
       const response = await this.client.get('/health');
-      
+
       return {
         healthy: response.data.data.healthy,
         availableProviders: response.data.data.availableProviders,

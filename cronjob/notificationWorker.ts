@@ -95,9 +95,9 @@ export async function startNotificationWorker(): Promise<void> {
     // Log stats every 30 seconds
     setInterval(async () => {
       const stats = await notificationQueue.getStats();
-      console.log(
-        `📊 Queue stats - Queue: ${stats.queueSize}, Processing: ${stats.processingSize}, Failed: ${stats.failedSize}`
-      );
+      // console.log(
+      //   `📊 Queue stats - Queue: ${stats.queueSize}, Processing: ${stats.processingSize}, Failed: ${stats.failedSize}`
+      // );
     }, 30000);
 
     console.log('✅ Notification queue worker started successfully');

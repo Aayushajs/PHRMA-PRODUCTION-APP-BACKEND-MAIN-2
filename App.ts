@@ -7,6 +7,8 @@ import { connectDB } from './Databases/db.js';
 import { connectRedis } from './config/redis.js';
 import { errorHandler } from './Middlewares/errorHandler.js';
 import mainRouter from './Routers/main.Routes.js';
+import listEndpoints from 'express-list-endpoints';
+
 
 dotenv.config({ path: './config/.env' });
 
@@ -32,7 +34,8 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api/v2', mainRouter);
-
+console.log(listEndpoints(app));
+// filepath: server.ts
 app.use(errorHandler);
 
 connectDB().catch(err => {

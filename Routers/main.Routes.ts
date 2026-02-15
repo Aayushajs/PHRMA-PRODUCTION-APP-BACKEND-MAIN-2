@@ -5,15 +5,30 @@
  */
 
 import { Router } from 'express';
-import ordersRouter from './orders.Routes.js';
-import paymentsRouter from './payments.Routes.js';
+import ordersRouter from './Routers/orders.Routes';
+import paymentsRouter from './Routers/payments.Routes.js';
 import { notificationQueue } from '../Services/notificationQueue.Service.js';
-import notificationRoutes from './notification.Routes.js';
+import notificationRoutes from './Routers/notification.Routes.js';
 import { catchAsyncErrors } from '../Utils/catchAsyncErrors.js';
 import { handleResponse } from '../Utils/handleResponse.js';
+import userRouter from "./Routers/user.Routes"
+import medicineStoreRouter from "./Routers/medicineStore.Routes"
+import adminStoreRouter from "./Routers/adminStore.Routes"
+import locationRouter from "./Routers/location.Routes"
+import itemsRouter from "./Routers/item.Routes"
+import unitRouter from "./Routers/unit.Routes"
+import gstRouter from "./Routers/gst.Routes"
 
 
 const mainRouter = Router();
+
+mainRouter.use('/user', userRouter);
+mainRouter.use('/medicine-store', medicineStoreRouter);
+mainRouter.use('/admin/stores', adminStoreRouter);
+mainRouter.use('/location', locationRouter);
+mainRouter.use('/items', itemsRouter);
+mainRouter.use('/units', unitRouter);
+mainRouter.use('/gst', gstRouter);
 
 // Health check
 mainRouter.get('/health', (req, res) => {
@@ -34,6 +49,13 @@ mainRouter.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       health: '/api/v2/health',
+      user: '/api/v2/user',
+      medicineStore: '/api/v2/medicine-store',
+      adminStores: '/api/v2/admin/stores',
+      location: '/api/v2/location',
+      units: '/api/v2/units',
+      gst: '/api/v2/gst',
+      items: '/api/v2/items',
       orders: '/api/v2/orders',
       payments: '/api/v2/payments',
       notifications: '/api/v2/notification-service',
@@ -51,7 +73,7 @@ mainRouter.use('/payments', paymentsRouter);
 mainRouter.get('/queue-stats', catchAsyncErrors(async (req, res, next) => {
   const stats = await notificationQueue.getStats();
   const failedNotifications = await notificationQueue.getFailedNotifications(10);
-  
+
   return handleResponse(req, res, 200, 'Queue statistics retrieved successfully', {
     stats,
     recentFailures: failedNotifications,

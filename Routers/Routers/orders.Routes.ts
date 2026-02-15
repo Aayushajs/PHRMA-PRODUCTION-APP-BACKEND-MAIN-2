@@ -6,10 +6,10 @@
 */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { sendNotificationToUser } from '../Utils/notificationClient.js';
-import { catchAsyncErrors } from '../Utils/catchAsyncErrors.js';
-import { ApiError } from '../Utils/ApiError.js';
-import { handleResponse } from '../Utils/handleResponse.js';
+import { sendNotificationToUser } from '../../Utils/notificationClient.js';
+import { catchAsyncErrors } from '../../Utils/catchAsyncErrors.js';
+import { ApiError } from '../../Utils/ApiError.js';
+import { handleResponse } from '../../Utils/handleResponse.js';
 
 const ordersRouter = Router();
 
