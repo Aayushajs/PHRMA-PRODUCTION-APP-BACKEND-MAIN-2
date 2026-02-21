@@ -8,7 +8,7 @@
   "scripts": {
     "start": "bun run server.ts",
     "dev": "bun --watch server.ts",
-    "build": "tsc",
+    "build": "tsc && node fix-esm-imports.js",
     "generate-api-key": "ts-node generate-api-key.ts",
     "generate-key": "ts-node generate-api-key.ts"
   },
