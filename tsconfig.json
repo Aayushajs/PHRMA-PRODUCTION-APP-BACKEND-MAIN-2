@@ -3,6 +3,20 @@
         "target": "ESNext",
         "module": "ESNext",
         "moduleResolution": "Node",
+        "baseUrl": ".",
+        "paths": {
+            "@utils/*": ["Utils/*"],
+            "@models/*": ["Databases/Models/*"],
+            "@services/*": ["Services/*"],
+            "@config/*": ["config/*"],
+            "@middlewares/*": ["Middlewares/*"],
+            "@databases/*": ["Databases/*"],
+            "@routers/*": ["Routers/*"],
+            "@types/*": ["types/*"],
+            "@schemas/*": ["Databases/Schema/*"],
+            "@entities/*": ["Databases/Entities/*"],
+            "@cronjob/*": ["cronjob/*"]
+        },
         "typeRoots": [
             "./types",
             "./node_modules/@types"
@@ -18,13 +32,25 @@
         "outDir": "./dist",
         "rootDir": "./",
         "noFallthroughCasesInSwitch": true,
+        "noUncheckedIndexedAccess": true,
+        "noImplicitOverride": true,
+        "forceConsistentCasingInFileNames": true,
         "declaration": true,
         "declarationMap": true,
         "sourceMap": true,
         "resolveJsonModule": true
     },
     "include": [
-        "./**/*.ts"
+        "server.ts",
+        "App.ts",
+        "types/**/*",
+        "Databases/**/*",
+        "Middlewares/**/*",
+        "Routers/**/*",
+        "Services/**/*",
+        "Utils/**/*",
+        "config/**/*",
+        "cronjob/**/*"
     ],
     "exclude": [
         "node_modules",

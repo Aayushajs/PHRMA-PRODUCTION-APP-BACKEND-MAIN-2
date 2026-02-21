@@ -8,7 +8,7 @@
   "scripts": {
     "start": "bun run server.ts",
     "dev": "bun --watch server.ts",
-    "build": "tsc && node fix-esm-imports.js",
+    "build": "tsc && tsc-alias -p tsconfig.json -f -fe .js",
     "generate-api-key": "ts-node generate-api-key.ts",
     "generate-key": "ts-node generate-api-key.ts"
   },
@@ -27,6 +27,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.10",
     "@types/node": "^24.5.2",
+    "tsc-alias": "^1.8.16",
     "typescript": "^5.5.0"
   },
   "dependencies": {

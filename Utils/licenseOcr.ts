@@ -163,7 +163,7 @@ export class LicenseOCRService {
 
             for (const format of formats) {
                 const match = dateStr.match(format);
-                if (match) {
+                if (match && match[1] && match[2] && match[3]) {
                     const day = parseInt(match[1]);
                     const month = parseInt(match[2]);
                     let year = parseInt(match[3]);

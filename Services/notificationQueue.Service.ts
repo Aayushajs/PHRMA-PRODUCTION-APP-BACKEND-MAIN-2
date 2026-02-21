@@ -88,9 +88,11 @@ class NotificationQueue {
       const processingList = await redis.lRange(this.PROCESSING_KEY, 0, -1);
       
       for (let i = 0; i < processingList.length; i++) {
-        const notification: QueuedNotification = JSON.parse(processingList[i]);
+        const item = processingList[i];
+        if (!item) continue;
+        const notification: QueuedNotification = JSON.parse(item);
         if (notification.id === notificationId) {
-          await redis.lRem(this.PROCESSING_KEY, 1, processingList[i]);
+          await redis.lRem(this.PROCESSING_KEY, 1, item);
           console.log(`✅ Notification ${notificationId} completed`);
           break;
         }
@@ -112,9 +114,11 @@ class NotificationQueue {
       // Remove from processing
       const processingList = await redis.lRange(this.PROCESSING_KEY, 0, -1);
       for (let i = 0; i < processingList.length; i++) {
-        const item: QueuedNotification = JSON.parse(processingList[i]);
+        const elem = processingList[i];
+        if (!elem) continue;
+        const item: QueuedNotification = JSON.parse(elem);
         if (item.id === notification.id) {
-          await redis.lRem(this.PROCESSING_KEY, 1, processingList[i]);
+          await redis.lRem(this.PROCESSING_KEY, 1, elem);
           break;
         }
       }
