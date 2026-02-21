@@ -6,7 +6,7 @@
 */
 
 import axios from "axios";
-import { ApiError } from "../Middlewares/errorHandler";
+import { ApiError } from "../Middlewares/errorHandler.js";
 
 interface GSTVerificationResult {
     isValid: boolean;

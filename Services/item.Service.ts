@@ -7,18 +7,18 @@
 */
 
 import { Response, Request, NextFunction } from "express";
-import { catchAsyncErrors } from "../Utils/catchAsyncErrors";
-import { ApiError } from "../Utils/ApiError";
-import { handleResponse } from "../Utils/handleResponse";
-import { redis } from "../config/redis";
-import ItemModel from "../Databases/Models/item.Model";
-import ChildUnitModel from "../Databases/Models/childUnit.model";
-import ParentUnitModel from "../Databases/Models/parentUnit.model";
-import { uploadToCloudinary } from "../Utils/cloudinaryUpload";
+import { catchAsyncErrors } from "../Utils/catchAsyncErrors.js";
+import { ApiError } from "../Utils/ApiError.js";
+import { handleResponse } from "../Utils/handleResponse.js";
+import { redis } from "../config/redis.js";
+import ItemModel from "../Databases/Models/item.Model.js";
+import ChildUnitModel from "../Databases/Models/childUnit.model.js";
+import ParentUnitModel from "../Databases/Models/parentUnit.model.js";
+import { uploadToCloudinary } from "../Utils/cloudinaryUpload.js";
 import { v2 as cloudinary } from "cloudinary";
 import mongoose from "mongoose";
-import { MRPVerificationService } from './mrpVerification.Service';
-import { gstModel } from '../Databases/Models/gst.Model';
+import { MRPVerificationService } from './mrpVerification.Service.js';
+import { gstModel } from '../Databases/Models/gst.Model.js';
 
 export default class ItemServices {
 

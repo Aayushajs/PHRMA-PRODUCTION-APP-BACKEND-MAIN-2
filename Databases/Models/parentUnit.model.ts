@@ -6,8 +6,8 @@
 */
 
 import { model } from "mongoose";
-import { IParentUnit } from "../Entities/parentUnit.interface";
-import { parentUnitSchema } from "../Schema/parentUnit.Schema";
+import { IParentUnit } from "../Entities/parentUnit.interface.js";
+import { parentUnitSchema } from "../Schema/parentUnit.Schema.js";
 
 export const ParentUnit = model<IParentUnit>("ParentUnit", parentUnitSchema);
 

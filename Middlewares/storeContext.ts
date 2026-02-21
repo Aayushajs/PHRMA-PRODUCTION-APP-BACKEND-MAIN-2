@@ -5,8 +5,8 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { ApiError } from './errorHandler';
-import userModel from '../Databases/Models/user.Model';
+import { ApiError } from './errorHandler.js';
+import userModel from '../Databases/Models/user.Model.js';
 
 /**
  * Middleware: Fetch and inject user's medicineStoreId

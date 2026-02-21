@@ -5,8 +5,8 @@
 └───────────────────────────────────────────────────────────────────────┘
 */
 
-import { userSchema } from "../Schema/user.Schema";
-import { Iuser } from "../Entities/user.Interface";
+import { userSchema } from "../Schema/user.Schema.js";
+import { Iuser } from "../Entities/user.Interface.js";
 import { model } from 'mongoose';
 
 const User = model<Iuser>("User", userSchema);

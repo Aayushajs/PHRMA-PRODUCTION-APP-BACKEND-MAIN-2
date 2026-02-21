@@ -6,6 +6,6 @@
 */
 
 import mongoose from "mongoose";
-import { gstSchema } from "../Schema/gst.Schema";
+import { gstSchema } from "../Schema/gst.Schema.js";
 
 export const gstModel = mongoose.model("Gst", gstSchema);

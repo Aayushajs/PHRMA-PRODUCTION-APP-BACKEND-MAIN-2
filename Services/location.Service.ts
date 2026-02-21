@@ -6,15 +6,15 @@
 */
 
 import { Request, Response, NextFunction } from "express";
-import { catchAsyncErrors } from "../Utils/catchAsyncErrors";
-import { ApiError } from "../Middlewares/errorHandler";
-import { handleResponse } from "../Utils/handleResponse";
+import { catchAsyncErrors } from "../Utils/catchAsyncErrors.js";
+import { ApiError } from "../Middlewares/errorHandler.js";
+import { handleResponse } from "../Utils/handleResponse.js";
 import { 
     getAllStates, 
     getCitiesByState as getCitiesByStateName,
     getPincodeInfo as getPincodeData
-} from "../Utils/pincodeService";
-import { validatePincodeFormat } from "../Utils/validators";
+} from "../Utils/pincodeService.js";
+import { validatePincodeFormat } from "../Utils/validators.js";
 
 export default class LocationService {
     /**

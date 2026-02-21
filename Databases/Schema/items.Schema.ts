@@ -7,7 +7,7 @@
 └───────────────────────────────────────────────────────────────────────┘
 */
 
-import { Iitem } from '../Entities/item.Interface';
+import { Iitem } from '../Entities/item.Interface.js';
 import mongoose, { Schema, Document } from "mongoose";
 
 export const itemSchema = new Schema<Iitem & Document>(

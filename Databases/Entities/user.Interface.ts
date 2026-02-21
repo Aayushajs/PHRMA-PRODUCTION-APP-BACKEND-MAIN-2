@@ -6,7 +6,7 @@
 */
 
 import mongoose from "mongoose";
-import RoleIndex from "../../Utils/Roles.enum";
+import RoleIndex from "../../Utils/Roles.enum.js";
 
 export interface Iuser {
   _id?: mongoose.Types.ObjectId;

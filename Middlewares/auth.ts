@@ -7,7 +7,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
-import { ApiError } from './errorHandler';
+import { ApiError } from './errorHandler.js';
 
 dotenv.config({ path: './config/.env' });
 

@@ -7,10 +7,10 @@
 */
 
 import express from "express";
-import { uploadImage } from "../../config/multer";
-import ItemServices from "../../Services/item.Service";
-import { adminMiddleware, authenticatedUserMiddleware } from "../../Middlewares/auth";
-import { storeContextMiddleware } from "../../Middlewares/storeContext";
+import { uploadImage } from "../../config/multer.js";
+import ItemServices from "../../Services/item.Service.js";
+import { adminMiddleware, authenticatedUserMiddleware } from "../../Middlewares/auth.js";
+import { storeContextMiddleware } from "../../Middlewares/storeContext.js";
 
 const itemsRouter = express.Router();
 

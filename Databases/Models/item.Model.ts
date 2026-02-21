@@ -5,8 +5,8 @@
 └───────────────────────────────────────────────────────────────────────┘
 */
 
-import { itemSchema } from "../Schema/items.Schema";
-import { Iitem } from "../Entities/item.Interface";
+import { itemSchema } from "../Schema/items.Schema.js";
+import { Iitem } from "../Entities/item.Interface.js";
 import { model } from "mongoose";
 
 export const ItemModel = model<Iitem>("Item", itemSchema);

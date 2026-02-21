@@ -13,7 +13,7 @@
 */
 
 import axios, { AxiosInstance, AxiosError } from 'axios';
-import { notificationQueue } from '../Services/notificationQueue.Service';
+import { notificationQueue } from '../Services/notificationQueue.Service.js';
 
 // ============================================================================
 // TYPES

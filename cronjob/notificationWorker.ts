@@ -5,8 +5,8 @@
 └───────────────────────────────────────────────────────────────────────┘
 */
 
-import { notificationQueue, QueuedNotification } from '../Services/notificationQueue.Service';
-import { notificationClient } from '../Utils/notificationClient';
+import { notificationQueue, QueuedNotification } from '../Services/notificationQueue.Service.js';
+import { notificationClient } from '../Utils/notificationClient.js';
 
 // ============================================================================
 // QUEUE PROCESSOR

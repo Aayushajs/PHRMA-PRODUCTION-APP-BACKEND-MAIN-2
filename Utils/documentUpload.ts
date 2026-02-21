@@ -5,8 +5,8 @@
 └───────────────────────────────────────────────────────────────────────┘
 */
 
-import { cloudinary } from "../config/cloudinary";
-import { ApiError } from "../Middlewares/errorHandler";
+import { cloudinary } from "../config/cloudinary.js";
+import { ApiError } from "../Middlewares/errorHandler.js";
 
 interface UploadResult {
     url: string;

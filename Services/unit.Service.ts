@@ -5,15 +5,15 @@
 └───────────────────────────────────────────────────────────────────────┘
 */
 
-import parentUnitModel from '../Databases/Models/parentUnit.model';
-import { IParentUnit } from '../Databases/Entities/parentUnit.interface';
-import childUnit from '../Databases/Models/childUnit.model';
-import { IChildUnit } from '../Databases/Entities/childUnit.interface';
-import { ApiError } from '../Utils/ApiError';
-import { catchAsyncErrors } from '../Utils/catchAsyncErrors';
+import parentUnitModel from '../Databases/Models/parentUnit.model.js';
+import { IParentUnit } from '../Databases/Entities/parentUnit.interface.js';
+import childUnit from '../Databases/Models/childUnit.model.js';
+import { IChildUnit } from '../Databases/Entities/childUnit.interface.js';
+import { ApiError } from '../Utils/ApiError.js';
+import { catchAsyncErrors } from '../Utils/catchAsyncErrors.js';
 import { Request, Response, NextFunction } from 'express';
-import { handleResponse } from '../Utils/handleResponse';
-import { redis } from '../config/redis';
+import { handleResponse } from '../Utils/handleResponse.js';
+import { redis } from '../config/redis.js';
 
 class ParentUnitServices {
 

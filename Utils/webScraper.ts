@@ -5,7 +5,7 @@
 
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import { redis } from '../config/redis';
+import { redis } from '../config/redis.js';
 
 export interface ScrapedProduct {
     source: string;

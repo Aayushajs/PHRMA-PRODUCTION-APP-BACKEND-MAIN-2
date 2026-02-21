@@ -5,7 +5,7 @@
  */
 
 import { Router } from 'express';
-import AdminStoreService from '../../Services/adminStore.Service';
+import AdminStoreService from '../../Services/adminStore.Service.js';
 
 const adminStoreRouter = Router();
 

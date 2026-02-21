@@ -6,8 +6,8 @@
 */
 
 import { model } from "mongoose";
-import { IChildUnit } from "../Entities/childUnit.interface";
-import { childUnitSchema } from "../Schema/childUnit.Schema";
+import { IChildUnit } from "../Entities/childUnit.interface.js";
+import { childUnitSchema } from "../Schema/childUnit.Schema.js";
 
 export const ChildUnit = model<IChildUnit>("ChildUnit", childUnitSchema);
 

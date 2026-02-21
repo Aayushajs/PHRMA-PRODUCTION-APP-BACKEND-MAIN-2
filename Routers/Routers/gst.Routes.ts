@@ -6,7 +6,7 @@
 */
 
 import express from "express";
-import GSTServices from "../../Services/gst.Service";
+import GSTServices from "../../Services/gst.Service.js";
 
 const gstRouter = express.Router();
 

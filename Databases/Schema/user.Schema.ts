@@ -7,8 +7,8 @@
 └───────────────────────────────────────────────────────────────────────┘
 */
 
-import RoleIndex from "../../Utils/Roles.enum";
-import { Iuser } from "../Entities/user.Interface";
+import RoleIndex from "../../Utils/Roles.enum.js";
+import { Iuser } from "../Entities/user.Interface.js";
 import { Schema, Document } from "mongoose";
 
 export const userSchema = new Schema<Iuser & Document>(

@@ -7,7 +7,7 @@
 */
 
 import { Request, Response, NextFunction } from "express";
-import { ApiError } from "./errorHandler";
+import { ApiError } from "./errorHandler.js";
 
 /**
  * Middleware to verify internal service authentication

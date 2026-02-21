@@ -5,7 +5,7 @@
  */
 
 import { Router } from 'express';
-import LocationService from '../../Services/location.Service';
+import LocationService from '../../Services/location.Service.js';
 
 const locationRouter = Router();
 

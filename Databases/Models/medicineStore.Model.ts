@@ -5,8 +5,8 @@
 └───────────────────────────────────────────────────────────────────────┘
 */
 
-import { medicineStoreSchema } from "../Schema/medicineStore.Schema";
-import { IMedicineStore } from "../Entities/medicineStore.Interface";
+import { medicineStoreSchema } from "../Schema/medicineStore.Schema.js";
+import { IMedicineStore } from "../Entities/medicineStore.Interface.js";
 import { model } from "mongoose";
 
 const MedicineStore = model<IMedicineStore>("MedicineStore", medicineStoreSchema);
