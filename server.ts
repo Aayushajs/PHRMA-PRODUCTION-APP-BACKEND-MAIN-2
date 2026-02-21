@@ -1,5 +1,5 @@
 import { createServer } from 'http';
-import app from './App';
+import app from './App.js';
 import { initializeSocket } from './config/socket.js';
 import { startKeepAliveCron } from './cronjob/keepAlive.js';
 import { startNotificationWorker } from './cronjob/notificationWorker.js';
