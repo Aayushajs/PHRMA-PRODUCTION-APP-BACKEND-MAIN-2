@@ -6,10 +6,10 @@
 */
 
 import { Request, Response, NextFunction } from "express";
-import { catchAsyncErrors } from "../Utils/catchAsyncErrors.js";
-import { ApiError } from "./errorHandler.js";
-import MedicineStoreModel from "../Databases/Models/medicineStore.Model.js";
-import { VerificationStatus } from "../Databases/Entities/medicineStore.Interface.js";
+import { catchAsyncErrors } from "../Utils/catchAsyncErrors";
+import { ApiError } from "./errorHandler";
+import MedicineStoreModel from "../Databases/Models/medicineStore.Model";
+import { VerificationStatus } from "../Databases/Entities/medicineStore.Interface";
 
 /**
  * Middleware to ensure medicine store is verified and approved

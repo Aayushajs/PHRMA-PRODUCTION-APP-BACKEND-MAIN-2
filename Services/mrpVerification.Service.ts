@@ -3,13 +3,13 @@
  * Implements 7-stage matching and price validation
  */
 
-import { scrapeAllSources, ScrapedProduct } from '../Utils/webScraper.js';
+import { scrapeAllSources, ScrapedProduct } from '../Utils/webScraper';
 import {
     calculateCompositeSimilarity,
     extractPackSize,
     normalizeProductName,
     stringSimilarity
-} from '../Utils/stringSimilarity.js';
+} from '../Utils/stringSimilarity';
 
 export interface MRPVerificationInput {
     itemName: string;

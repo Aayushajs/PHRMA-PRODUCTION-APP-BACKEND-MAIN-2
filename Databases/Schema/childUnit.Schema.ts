@@ -7,7 +7,7 @@
 */
 
 import { Schema, Document } from "mongoose";
-import { IChildUnit } from "../Entities/childUnit.interface.js";
+import { IChildUnit } from "../Entities/childUnit.interface";
 
 export const childUnitSchema = new Schema<IChildUnit & Document>(
   {

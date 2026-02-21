@@ -6,7 +6,7 @@
 └───────────────────────────────────────────────────────────────────────┘
 */
 
-import { Igst } from '../Entities/gst.interface.js';
+import { Igst } from '../Entities/gst.interface';
 import { Schema, Document } from "mongoose";
 
 export const gstSchema = new Schema<Igst & Document>(

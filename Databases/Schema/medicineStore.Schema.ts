@@ -6,7 +6,7 @@
 └───────────────────────────────────────────────────────────────────────┘
 */
 
-import { IMedicineStore, StoreType, VerificationStatus } from "../Entities/medicineStore.Interface.js";
+import { IMedicineStore, StoreType, VerificationStatus } from "../Entities/medicineStore.Interface";
 import { Schema, Document } from "mongoose";
 
 export const medicineStoreSchema = new Schema<IMedicineStore & Document>(

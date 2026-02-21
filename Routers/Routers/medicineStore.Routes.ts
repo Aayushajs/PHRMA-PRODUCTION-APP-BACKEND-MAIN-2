@@ -5,7 +5,7 @@
  */
 
 import { Router } from 'express';
-import MedicineStoreService from '../../Services/medicineStore.Service.js';
+import MedicineStoreService from '../../Services/medicineStore.Service';
 
 const medicineStoreRouter = Router();
 

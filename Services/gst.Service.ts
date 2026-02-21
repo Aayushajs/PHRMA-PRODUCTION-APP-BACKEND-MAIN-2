@@ -6,11 +6,11 @@
 */
 
 import { Request, Response, NextFunction } from "express";
-import { catchAsyncErrors } from "../Utils/catchAsyncErrors.js";
-import { ApiError } from "../Utils/ApiError.js";
-import { handleResponse } from "../Utils/handleResponse.js";
-import { gstModel } from "../Databases/Models/gst.Model.js";
-import { Igst } from "../Databases/Entities/gst.interface.js";
+import { catchAsyncErrors } from "../Utils/catchAsyncErrors";
+import { ApiError } from "../Utils/ApiError";
+import { handleResponse } from "../Utils/handleResponse";
+import { gstModel } from "../Databases/Models/gst.Model";
+import { Igst } from "../Databases/Entities/gst.interface";
 
 export default class GSTServices {
     public static createGST = catchAsyncErrors(

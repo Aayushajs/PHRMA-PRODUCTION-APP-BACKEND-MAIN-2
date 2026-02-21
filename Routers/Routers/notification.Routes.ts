@@ -11,8 +11,8 @@ import {
   sendToUser,
   sendToUsers,
   sendBulkNotifications,
-} from '../../Services/notification.Service.js';
-import { authenticatedUserMiddleware } from '../../Middlewares/auth.js';
+} from '../../Services/notification.Service';
+import { authenticatedUserMiddleware } from '../../Middlewares/auth';
 
 const notificationRouter = Router();
 

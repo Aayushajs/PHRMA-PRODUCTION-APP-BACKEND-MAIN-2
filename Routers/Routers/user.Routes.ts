@@ -1,6 +1,6 @@
-import UserService from "../../Services/user.Service.js";
+import UserService from "../../Services/user.Service";
 import { Router } from "express";
-import { verifyInternalService } from "../../Middlewares/internalService.js"
+import { verifyInternalService } from "../../Middlewares/internalService"
 
 const userRouter = Router();
 const ur = userRouter;

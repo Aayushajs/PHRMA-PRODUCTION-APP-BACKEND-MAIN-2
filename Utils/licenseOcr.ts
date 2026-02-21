@@ -6,7 +6,7 @@
 */
 
 import axios from "axios";
-import { ApiError } from "../Middlewares/errorHandler.js";
+import { ApiError } from "../Middlewares/errorHandler";
 
 interface LicenseExtractionResult {
     licenseNumber?: string;

@@ -7,10 +7,10 @@
 */
 
 import { Request, Response, NextFunction } from 'express';
-import { notificationClient } from '../Utils/notificationClient.js';
-import { catchAsyncErrors } from '../Utils/catchAsyncErrors.js';
-import { ApiError } from '../Utils/ApiError.js';
-import { handleResponse } from '../Utils/handleResponse.js';
+import { notificationClient } from '../Utils/notificationClient';
+import { catchAsyncErrors } from '../Utils/catchAsyncErrors';
+import { ApiError } from '../Utils/ApiError';
+import { handleResponse } from '../Utils/handleResponse';
 
 // ============================================================================
 // TYPES

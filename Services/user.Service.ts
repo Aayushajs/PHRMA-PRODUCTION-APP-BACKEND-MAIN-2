@@ -1,13 +1,13 @@
-import UserModel from "../Databases/Models/user.Model.js"
-import { catchAsyncErrors } from "../Utils/catchAsyncErrors.js";
+import UserModel from "../Databases/Models/user.Model"
+import { catchAsyncErrors } from "../Utils/catchAsyncErrors";
 import { Request, Response, NextFunction } from "express"
-import { ApiError } from "../Middlewares/errorHandler.js";
+import { ApiError } from "../Middlewares/errorHandler";
 import bcrypt from "bcryptjs"
-import { generateUserToken } from "../Utils/jwtToken.js"
-import { handleResponse } from "../Utils/handleResponse.js";
-import { redis } from "../config/redis.js";
-import { generateOtp } from "../Utils/OtpGenerator.js";
-import { mailClient } from "../Utils/mailClient.js";
+import { generateUserToken } from "../Utils/jwtToken"
+import { handleResponse } from "../Utils/handleResponse";
+import { redis } from "../config/redis";
+import { generateOtp } from "../Utils/OtpGenerator";
+import { mailClient } from "../Utils/mailClient";
 
 export default class UserService {
     public static login = catchAsyncErrors(

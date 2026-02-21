@@ -6,11 +6,11 @@
 
 import { Router } from 'express';
 import ordersRouter from './Routers/orders.Routes';
-import paymentsRouter from './Routers/payments.Routes.js';
-import { notificationQueue } from '../Services/notificationQueue.Service.js';
-import notificationRoutes from './Routers/notification.Routes.js';
-import { catchAsyncErrors } from '../Utils/catchAsyncErrors.js';
-import { handleResponse } from '../Utils/handleResponse.js';
+import paymentsRouter from './Routers/payments.Routes';
+import { notificationQueue } from '../Services/notificationQueue.Service';
+import notificationRoutes from './Routers/notification.Routes';
+import { catchAsyncErrors } from '../Utils/catchAsyncErrors';
+import { handleResponse } from '../Utils/handleResponse';
 import userRouter from "./Routers/user.Routes"
 import medicineStoreRouter from "./Routers/medicineStore.Routes"
 import adminStoreRouter from "./Routers/adminStore.Routes"

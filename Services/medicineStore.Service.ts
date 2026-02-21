@@ -1,27 +1,27 @@
-import MedicineStoreModel from "../Databases/Models/medicineStore.Model.js";
-import UserModel from "../Databases/Models/user.Model.js";
-import { catchAsyncErrors } from "../Utils/catchAsyncErrors.js";
+import MedicineStoreModel from "../Databases/Models/medicineStore.Model";
+import UserModel from "../Databases/Models/user.Model";
+import { catchAsyncErrors } from "../Utils/catchAsyncErrors";
 import { Request, Response, NextFunction } from "express"
-import { ApiError } from "../Middlewares/errorHandler.js";
+import { ApiError } from "../Middlewares/errorHandler";
 import bcrypt from "bcryptjs";
-import { handleResponse } from "../Utils/handleResponse.js";
-import { mailClient } from "../Utils/mailClient.js";
-import RoleIndex from "../Utils/Roles.enum.js";
+import { handleResponse } from "../Utils/handleResponse";
+import { mailClient } from "../Utils/mailClient";
+import RoleIndex from "../Utils/Roles.enum";
 import {
     validateGSTFormat,
     validatePharmacyLicenseFormat,
     validatePincodeFormat,
     validatePhoneNumber,
     validateEmail
-} from "../Utils/validators.js";
+} from "../Utils/validators";
 import {
     validatePincodeMatch
-} from "../Utils/pincodeService.js";
-import { EmailTemplates } from "../Utils/emailTemplates.js";
-import { DocumentUploadService } from "../Utils/documentUpload.js";
-import { GSTVerificationService } from "../Utils/gstVerification.js";
-import { LicenseOCRService } from "../Utils/licenseOcr.js";
-import { VerificationStatus } from "../Databases/Entities/medicineStore.Interface.js";
+} from "../Utils/pincodeService";
+import { EmailTemplates } from "../Utils/emailTemplates";
+import { DocumentUploadService } from "../Utils/documentUpload";
+import { GSTVerificationService } from "../Utils/gstVerification";
+import { LicenseOCRService } from "../Utils/licenseOcr";
+import { VerificationStatus } from "../Databases/Entities/medicineStore.Interface";
 
 export default class MedicineStoreService {
     /**

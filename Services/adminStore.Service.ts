@@ -6,16 +6,16 @@
 */
 
 import { Request, Response, NextFunction } from "express";
-import { catchAsyncErrors } from "../Utils/catchAsyncErrors.js";
-import { ApiError } from "../Middlewares/errorHandler.js";
-import { handleResponse } from "../Utils/handleResponse.js";
-import MedicineStoreModel from "../Databases/Models/medicineStore.Model.js";
-import { VerificationStatus } from "../Databases/Entities/medicineStore.Interface.js";
-import { mailClient } from "../Utils/mailClient.js";
-import { EmailTemplates } from "../Utils/emailTemplates.js";
-import { generateSecurePassword } from "../Utils/generatePassword.js";
+import { catchAsyncErrors } from "../Utils/catchAsyncErrors";
+import { ApiError } from "../Middlewares/errorHandler";
+import { handleResponse } from "../Utils/handleResponse";
+import MedicineStoreModel from "../Databases/Models/medicineStore.Model";
+import { VerificationStatus } from "../Databases/Entities/medicineStore.Interface";
+import { mailClient } from "../Utils/mailClient";
+import { EmailTemplates } from "../Utils/emailTemplates";
+import { generateSecurePassword } from "../Utils/generatePassword";
 import bcrypt from "bcryptjs";
-import UserModel from "../Databases/Models/user.Model.js";
+import UserModel from "../Databases/Models/user.Model";
 
 export default class AdminStoreService {
     /**

@@ -6,8 +6,8 @@
 */
 
 import { Router } from 'express';
-import unitServices from '../../Services/unit.Service.js';
-import { adminMiddleware } from '../../Middlewares/auth.js';
+import unitServices from '../../Services/unit.Service';
+import { adminMiddleware } from '../../Middlewares/auth';
 
 
 const { ParentUnitServices, ChildUnitServices } = unitServices;
