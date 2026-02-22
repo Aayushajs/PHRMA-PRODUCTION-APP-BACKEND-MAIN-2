@@ -4,7 +4,6 @@ import { initializeSocket } from './config/socket.js';
 import { startKeepAliveCron } from './cronjob/keepAlive.js';
 import { startNotificationWorker } from './cronjob/notificationWorker.js';
 import { scheduleLicenseExpiryCron } from './cronjob/licenseExpiry.Job.js';
-import listEndpoints from 'express-list-endpoints';
 
 const PORT = parseInt(process.env.PORT || '5002', 10);
 

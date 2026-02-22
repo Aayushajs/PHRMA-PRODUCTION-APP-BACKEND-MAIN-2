@@ -35,6 +35,7 @@ class MailClient {
   private client: AxiosInstance;
   private readonly SERVICE_1_URL: string;
   private readonly API_KEY: string;
+  private lastClientCreation: number = 0;
 
   constructor() {
     // Validate configuration
@@ -46,8 +47,18 @@ class MailClient {
       console.error('   Mail service will not work properly');
     }
 
+    console.log(`📧 Mail Client initializing with SERVICE_1_URL: ${this.SERVICE_1_URL}`);
+
     // Create axios instance with default config
-    this.client = axios.create({
+    this.client = this.createAxiosInstance();
+    this.initializeInterceptors();
+  }
+
+  /**
+   * Create a fresh axios instance (useful for reinitializing after connection issues)
+   */
+  private createAxiosInstance(): AxiosInstance {
+    return axios.create({
       baseURL: `${this.SERVICE_1_URL}/api/v1/mail-service`,
       timeout: 15000, // 15 seconds for email operations
       headers: {
@@ -55,7 +66,12 @@ class MailClient {
         'x-internal-api-key': this.API_KEY,
       },
     });
+  }
 
+  /**
+   * Initialize axios interceptors for logging and error handling
+   */
+  private initializeInterceptors(): void {
     // Request interceptor for logging
     this.client.interceptors.request.use(
       (config) => {
@@ -80,10 +96,17 @@ class MailClient {
           console.error(`❌ Mail API error: ${error.response.status}`, error.response.data);
         } else if (error.request) {
           // Request made but no response received
-          console.error('❌ Mail API no response - Service 1 may be down');
+          console.error('❌ Mail API no response - Service 1 may be down or connection failed');
+          console.error('   Error details:', error.message);
         } else {
           // Error in setting up request
           console.error('❌ Mail API request setup error:', error.message);
+          
+          // If "client is closed", reinitialize
+          if (error.message.includes('client is closed') || error.message.includes('Client is closed')) {
+            console.warn('⚠️ Axios client was closed, reinitializing...');
+            this.client = this.createAxiosInstance();
+          }
         }
         return Promise.reject(error);
       }
@@ -152,9 +175,31 @@ class MailClient {
         data: response.data.data,
         statusCode: response.status,
       };
-    } catch (error) {
+    } catch (error: any) {
+      // If client is closed, retry once with fresh client
+      if (error.message?.includes('client is closed') || error.message?.includes('Client is closed')) {
+        console.warn('⚠️ Retrying with new client instance...');
+        try {
+          this.client = this.createAxiosInstance();
+          const response = await this.client.post('/send-otp', { 
+            email,
+            otp 
+          });
+
+          return {
+            success: true,
+            message: response.data.message || 'OTP sent successfully',
+            data: response.data.data,
+            statusCode: response.status,
+          };
+        } catch (retryError) {
+          return this.handleError(retryError as AxiosError, 'sendCustomOTP');
+        }
+      }
+      
       return this.handleError(error as AxiosError, 'sendCustomOTP');
-    }  }
+    }  
+  }
 
   /**
    * Send Welcome Email
