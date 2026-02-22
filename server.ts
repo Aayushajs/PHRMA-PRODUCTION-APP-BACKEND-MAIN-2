@@ -9,8 +9,8 @@ import listEndpoints from 'express-list-endpoints';
 const PORT = parseInt(process.env.PORT || '5002', 10);
 
 const httpServer = createServer(app);
-console.log(app._router && app._router.stack);
-console.log(listEndpoints(app));
+// console.log(app._router && app._router.stack);
+// console.log(listEndpoints(app));
 
 initializeSocket(httpServer);
 

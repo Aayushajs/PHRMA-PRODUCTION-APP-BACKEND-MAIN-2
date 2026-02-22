@@ -34,7 +34,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api/v2', mainRouter);
-console.log(listEndpoints(app));
+// console.log(listEndpoints(app));
 // filepath: server.ts
 app.use(errorHandler);
 
