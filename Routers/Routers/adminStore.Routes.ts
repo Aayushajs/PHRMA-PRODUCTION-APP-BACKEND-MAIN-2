@@ -6,6 +6,7 @@
 
 import { Router } from 'express';
 import AdminStoreService from '../../Services/adminStore.Service';
+import { adminMiddleware } from '../../Middlewares/auth'
 
 const adminStoreRouter = Router();
 
@@ -26,7 +27,7 @@ adminStoreRouter.get('/:storeId', AdminStoreService.getStoreDetails);
  * Update store verification status (approve/reject/suspend)
  * Body: { action: 'approve' | 'reject' | 'suspend', adminRemarks?: string }
  */
-adminStoreRouter.put('/:storeId/status', AdminStoreService.updateStoreStatus);
+adminStoreRouter.put('/:storeId/status', adminMiddleware,AdminStoreService.updateStoreStatus);
 
 /**
  * GET /api/admin/stores/stats/verification

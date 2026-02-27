@@ -186,3 +186,219 @@ export const validatePincodeFormat = (pincode: string | number): { isValid: bool
 
     return { isValid: true, message: "Pincode format is valid" };
 };
+
+/**
+ * ============================================================================
+ * DYNAMIC FIELD VALIDATION HELPERS
+ * ============================================================================
+ * Reusable validation functions for checking required fields across services
+ */
+
+/**
+ * Validates required fields in a flat object
+ * @param data - The object to validate
+ * @param requiredFields - Array of field names that must be present
+ * @param objectName - Name of the object (for error messages)
+ * @returns Validation result with list of missing fields
+ * 
+ * @example
+ * const result = validateRequiredFields(
+ *   req.body, 
+ *   ['userId', 'email', 'name'], 
+ *   'User'
+ * );
+ * if (!result.isValid) {
+ *   throw new Error(`Missing: ${result.missingFields.join(', ')}`);
+ * }
+ */
+export const validateRequiredFields = (
+    data: any,
+    requiredFields: string[],
+    objectName: string = "Request"
+): { isValid: boolean; missingFields: string[]; message?: string } => {
+    if (!data || typeof data !== 'object') {
+        return {
+            isValid: false,
+            missingFields: [objectName],
+            message: `${objectName} is required and must be an object`
+        };
+    }
+
+    const missingFields = requiredFields.filter(field => {
+        const value = data[field];
+        // Check for undefined, null, empty string, or empty array
+        if (value === undefined || value === null || value === '') {
+            return true;
+        }
+        // Check for empty arrays
+        if (Array.isArray(value) && value.length === 0) {
+            return true;
+        }
+        return false;
+    });
+
+    return {
+        isValid: missingFields.length === 0,
+        missingFields,
+        message: missingFields.length > 0 
+            ? `Missing required fields: ${missingFields.join(', ')}`
+            : undefined
+    };
+};
+
+/**
+ * Validates required fields in a nested object
+ * @param obj - The nested object to validate
+ * @param requiredFields - Array of field names that must be present in the nested object
+ * @param objectName - Name of the nested object (for error messages)
+ * @returns Validation result with list of missing fields (prefixed with objectName)
+ * 
+ * @example
+ * const result = validateNestedObject(
+ *   req.body.address,
+ *   ['street', 'city', 'pincode'],
+ *   'address'
+ * );
+ * if (!result.isValid) {
+ *   throw new Error(result.message); // "Missing: address.street, address.city"
+ * }
+ */
+export const validateNestedObject = (
+    obj: any,
+    requiredFields: string[],
+    objectName: string
+): { isValid: boolean; missingFields: string[]; message?: string } => {
+    if (!obj || typeof obj !== 'object') {
+        return {
+            isValid: false,
+            missingFields: [objectName],
+            message: `${objectName} is required and must be an object`
+        };
+    }
+
+    const missingFields = requiredFields.filter(field => {
+        const value = obj[field];
+        // Check for undefined, null, empty string, or empty array
+        if (value === undefined || value === null || value === '') {
+            return true;
+        }
+        // Check for empty arrays
+        if (Array.isArray(value) && value.length === 0) {
+            return true;
+        }
+        return false;
+    });
+
+    const prefixedFields = missingFields.map(f => `${objectName}.${f}`);
+
+    return {
+        isValid: missingFields.length === 0,
+        missingFields: prefixedFields,
+        message: prefixedFields.length > 0 
+            ? `Missing required fields: ${prefixedFields.join(', ')}`
+            : undefined
+    };
+};
+
+/**
+ * Validates array of objects, ensuring each item has required fields
+ * @param array - The array to validate
+ * @param requiredFields - Array of field names that must be present in each item
+ * @param arrayName - Name of the array (for error messages)
+ * @returns Validation result with details of invalid items
+ * 
+ * @example
+ * const result = validateArrayItems(
+ *   req.body.orderItems,
+ *   ['itemId', 'quantity'],
+ *   'orderItems'
+ * );
+ * if (!result.isValid) {
+ *   throw new Error(result.message); // "orderItems[2]: missing itemId, quantity"
+ * }
+ */
+export const validateArrayItems = (
+    array: any,
+    requiredFields: string[],
+    arrayName: string
+): { isValid: boolean; errors: string[]; message?: string } => {
+    if (!array || !Array.isArray(array)) {
+        return {
+            isValid: false,
+            errors: [`${arrayName} must be an array`],
+            message: `${arrayName} must be an array`
+        };
+    }
+
+    if (array.length === 0) {
+        return {
+            isValid: false,
+            errors: [`${arrayName} cannot be empty`],
+            message: `${arrayName} cannot be empty`
+        };
+    }
+
+    const errors: string[] = [];
+
+    array.forEach((item, index) => {
+        if (!item || typeof item !== 'object') {
+            errors.push(`${arrayName}[${index}] must be an object`);
+            return;
+        }
+
+        const missingFields = requiredFields.filter(field => {
+            const value = item[field];
+            return value === undefined || value === null || value === '';
+        });
+
+        if (missingFields.length > 0) {
+            errors.push(
+                `${arrayName}[${index}]: missing ${missingFields.join(', ')}`
+            );
+        }
+    });
+
+    return {
+        isValid: errors.length === 0,
+        errors,
+        message: errors.length > 0 ? errors.join('; ') : undefined
+    };
+};
+
+/**
+ * Validates that a value is within an enum
+ * @param value - The value to validate
+ * @param enumObj - The enum object
+ * @param fieldName - Name of the field (for error messages)
+ * @returns Validation result
+ * 
+ * @example
+ * const result = validateEnum(
+ *   req.body.status,
+ *   OrderStatus,
+ *   'status'
+ * );
+ * if (!result.isValid) {
+ *   throw new Error(result.message); // "Invalid status. Allowed: pending, confirmed, ..."
+ * }
+ */
+export const validateEnum = (
+    value: any,
+    enumObj: object,
+    fieldName: string
+): { isValid: boolean; message?: string; allowedValues?: string[] } => {
+    const allowedValues = Object.values(enumObj);
+
+    if (!allowedValues.includes(value)) {
+        return {
+            isValid: false,
+            allowedValues: allowedValues as string[],
+            message: `Invalid ${fieldName}. Allowed values: ${allowedValues.join(', ')}`
+        };
+    }
+
+    return {
+        isValid: true,
+        allowedValues: allowedValues as string[]
+    };
+};

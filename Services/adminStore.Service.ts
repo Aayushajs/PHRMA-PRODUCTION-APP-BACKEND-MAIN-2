@@ -16,6 +16,7 @@ import { EmailTemplates } from "../Utils/emailTemplates";
 import { generateSecurePassword } from "../Utils/generatePassword";
 import bcrypt from "bcryptjs";
 import UserModel from "../Databases/Models/user.Model";
+import { Types } from "mongoose";
 
 export default class AdminStoreService {
     /**
@@ -59,7 +60,12 @@ export default class AdminStoreService {
         async (req: Request, res: Response, next: NextFunction) => {
             const { storeId } = req.params;
             const { action, adminRemarks } = req.body;
-            const adminId = (req as any).user?._id;
+            console.log(`Received request to ${action} store with ID: ${storeId}`);
+            console.log("Request user:", req.user);
+            if (!req.user) {
+                return next(new ApiError(401, "Unauthorized"));
+            }
+            const adminId = new Types.ObjectId(req.user._id);
 
             // Validate action
             const validActions = ['approve', 'reject', 'suspend'];
@@ -98,9 +104,9 @@ export default class AdminStoreService {
                     
                     // Fetch owner information and check if this is a new account (needs password)
                     const populatedStore = await MedicineStoreModel.findById(storeId)
-                        .populate('ownerId', '_id userName email');
+                        .populate<{ ownerId: { _id: string; userName: string; email: string } }>('ownerId', '_id userName email');
                     
-                    const ownerInfo = populatedStore?.ownerId as any;
+                    const ownerInfo = populatedStore?.ownerId;
                     let newPassword: string | undefined;
                     
                     // Check if this is the first store for this owner (new account needs activation password)
@@ -210,8 +216,8 @@ export default class AdminStoreService {
                     emailError = emailResult.message || 'Unknown error';
                     console.error(`❌ ${action} email failed for ${recipientEmail}: ${emailError}`);
                 }
-            } catch (error: any) {
-                emailError = error.message || 'Email service unavailable';
+            } catch (error: unknown) {
+                emailError = error instanceof Error ? error.message : 'Email service unavailable';
                 console.error(`❌ ${action} email exception for ${recipientEmail}:`, error);
                 console.error(`   Make sure Service 1 (mail service) is running on: ${process.env.SERVICE_1_URL || 'http://localhost:5000'}`);
             }

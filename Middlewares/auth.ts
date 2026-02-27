@@ -25,6 +25,14 @@ declare global {
   }
 }
 
+// JWT Payload type
+interface JWTPayload {
+  _id: string;
+  role: string;
+  email: string;
+  medicineStoreId?: string;
+}
+
 /**
  * Extract user from JWT token or headers (Gateway mode)
  */
@@ -53,7 +61,7 @@ const getUserInfo = (req: Request) => {
       return null;
     }
 
-    const decoded = jwt.verify(token, process.env.USER_SECRET_KEY as string) as any;
+    const decoded = jwt.verify(token, process.env.USER_SECRET_KEY as string) as JWTPayload;
     return {
       _id: decoded._id,
       role: decoded.role,

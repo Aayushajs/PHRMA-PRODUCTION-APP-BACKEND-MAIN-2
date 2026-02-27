@@ -14,9 +14,7 @@ import {
     validatePhoneNumber,
     validateEmail
 } from "../Utils/validators";
-import {
-    validatePincodeMatch
-} from "../Utils/pincodeService";
+import { validatePincodeMatch } from "../Utils/pincodeService";
 import { EmailTemplates } from "../Utils/emailTemplates";
 import { DocumentUploadService } from "../Utils/documentUpload";
 import { GSTVerificationService } from "../Utils/gstVerification";
@@ -32,7 +30,7 @@ export default class MedicineStoreService {
         async (req: Request, res: Response, next: NextFunction) => {
             const { userName, email, phone, storeName, storeType, GSTNumber, pharmacyLicence, address, city, state, pincode } = req.body;
 
-            // Step 1: Check required fields
+            // Check required fields
             const requiredFields = { userName, email, phone, storeName, storeType, GSTNumber, pharmacyLicence, address, city, state, pincode };
             const missingFields = Object.entries(requiredFields)
                 .filter(([__, value]) => !value)
@@ -47,43 +45,43 @@ export default class MedicineStoreService {
                 )
             }
 
-            // Step 2: Validate email format
+            // Validate email format
             const emailValidation = validateEmail(email);
             if (!emailValidation.isValid) {
                 return next(new ApiError(400, emailValidation.message));
             }
 
-            // Step 3: Validate phone number
+            // Validate phone number
             const phoneValidation = validatePhoneNumber(phone);
             if (!phoneValidation.isValid) {
                 return next(new ApiError(400, phoneValidation.message));
             }
 
-            // Step 4: Validate GST Number format
+            // Validate GST Number format
             const gstValidation = validateGSTFormat(GSTNumber);
             if (!gstValidation.isValid) {
                 return next(new ApiError(400, gstValidation.message));
             }
 
-            // Step 5: Validate Pharmacy License format
+            // Validate Pharmacy License format
             const licenseValidation = validatePharmacyLicenseFormat(pharmacyLicence, state);
             if (!licenseValidation.isValid) {
                 return next(new ApiError(400, licenseValidation.message));
             }
 
-            // Step 6: Validate pincode format
+            // Validate pincode format
             const pincodeFormatValidation = validatePincodeFormat(pincode);
             if (!pincodeFormatValidation.isValid) {
                 return next(new ApiError(400, pincodeFormatValidation.message));
             }
 
-            // Step 7: Verify pincode matches city and state
+            // Verify pincode matches city and state
             const pincodeMatchValidation = await validatePincodeMatch(pincode, city, state);
             if (!pincodeMatchValidation.isValid) {
                 return next(new ApiError(400, pincodeMatchValidation.message));
             }
 
-            // Step 8: Check if store with same GST or pharmacy license already exists
+            // Check if store with same GST or pharmacy license already exists
             const existingStore = await MedicineStoreModel.findOne({
                 $or: [
                     { GSTNumber: GSTNumber.toUpperCase().trim() },
@@ -100,7 +98,7 @@ export default class MedicineStoreService {
                 }
             }
 
-            // Step 9: Check if email or phone already exists
+            // Check if email or phone already exists
             const existingContact = await MedicineStoreModel.findOne({
                 $or: [
                     { "contactDetails.email": email.toLowerCase().trim() },
@@ -112,7 +110,7 @@ export default class MedicineStoreService {
                 return next(new ApiError(409, "A store with this email or phone number is already registered"));
             }
 
-            // Step 10: Create or find user (store owner)
+            // Create or find user (store owner)
             let ownerId: any;
 
             // Check if user already exists with BOTH email AND phone (same owner registering another store)
@@ -162,7 +160,7 @@ export default class MedicineStoreService {
                 ownerId = newUser._id;
 
                 console.log("👤 New user created. Password will be set upon approval.");
-                
+
                 // Send initial registration confirmation (without password)
                 try {
                     const welcomeEmail = EmailTemplates.storeRegistrationPending({
@@ -195,40 +193,41 @@ export default class MedicineStoreService {
             }
 
             // Step 12: Process document uploads (if provided)
-            const documents: any = {};
-            const files = (req as any).files || {};
+            const documents: Record<string, string> = {};
+            const files = (req as Request & { files?: { [fieldname: string]: Express.Multer.File[] } }).files || {};
 
-            if (files.drugLicense) {
+            if (files.drugLicense && files.drugLicense[0]) {
                 const uploadResult = await DocumentUploadService.uploadDocument(
-                    files.drugLicense.buffer,
-                    files.drugLicense.originalname,
+                    files.drugLicense[0].buffer,
+                    files.drugLicense[0].originalname,
                     "medicine-store/licenses"
                 );
                 documents.drugLicense = uploadResult.url;
             }
 
-            if (files.pharmacistCert) {
+            if (files.pharmacistCert && files.pharmacistCert[0]) {
                 const uploadResult = await DocumentUploadService.uploadDocument(
-                    files.pharmacistCert.buffer,
-                    files.pharmacistCert.originalname,
+                    files.pharmacistCert[0].buffer,
+                    files.pharmacistCert[0].originalname,
                     "medicine-store/certificates"
                 );
                 documents.pharmacistCert = uploadResult.url;
             }
 
-            if (files.storePhoto) {
+            if (files.storePhoto && files.storePhoto[0]) {
                 const uploadResult = await DocumentUploadService.uploadDocument(
-                    files.storePhoto.buffer,
-                    files.storePhoto.originalname,
+                    files.storePhoto[0].buffer,
+                    
+                    files.storePhoto[0].originalname,
                     "medicine-store/photos"
                 );
                 documents.storePhoto = uploadResult.url;
             }
 
-            if (files.kycDoc) {
+            if (files.kycDoc && files.kycDoc[0]) {
                 const uploadResult = await DocumentUploadService.uploadDocument(
-                    files.kycDoc.buffer,
-                    files.kycDoc.originalname,
+                    files.kycDoc[0].buffer,
+                    files.kycDoc[0].originalname,
                     "medicine-store/kyc"
                 );
                 documents.kycDoc = uploadResult.url;
@@ -241,19 +240,21 @@ export default class MedicineStoreService {
             if (documents.drugLicense || documents.pharmacistCert) {
                 try {
                     const documentUrl = documents.drugLicense || documents.pharmacistCert;
-                    const ocrResult = await LicenseOCRService.extractLicenseData(documentUrl);
+                    if (documentUrl) {
+                        const ocrResult = await LicenseOCRService.extractLicenseData(documentUrl);
 
-                    if (ocrResult.isExpired) {
-                        return next(
-                            new ApiError(
-                                400,
-                                "Uploaded license has expired. Please upload a valid license."
-                            )
-                        );
+                        if (ocrResult.isExpired) {
+                            return next(
+                                new ApiError(
+                                    400,
+                                    "Uploaded license has expired. Please upload a valid license."
+                                )
+                            );
+                        }
+
+                        licenseExpiry = ocrResult.expiryDate;
+                        pharmacistVerified = true;
                     }
-
-                    licenseExpiry = ocrResult.expiryDate;
-                    pharmacistVerified = true;
                 } catch (error: any) {
                     console.warn("OCR extraction warning:", error.message);
                     // Continue without expiry date if OCR fails

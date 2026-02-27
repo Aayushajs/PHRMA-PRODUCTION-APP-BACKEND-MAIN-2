@@ -7,11 +7,13 @@
 */
 
 import { Response, Request, NextFunction } from "express";
+import mongoose from "mongoose";
 import { catchAsyncErrors } from "../Utils/catchAsyncErrors";
 import { ApiError } from "../Utils/ApiError";
 import { handleResponse } from "../Utils/handleResponse";
 import { redis } from "../config/redis";
 import ItemModel from "../Databases/Models/item.Model";
+import { Iitem } from "../Databases/Entities/item.Interface";
 import ChildUnitModel from "../Databases/Models/childUnit.model";
 import ParentUnitModel from "../Databases/Models/parentUnit.model";
 import { uploadToCloudinary } from "../Utils/cloudinaryUpload";
@@ -169,7 +171,7 @@ export default class ItemServices {
             }
 
             // === MRP VERIFICATION (REAL-TIME) ===
-            let mrpVerificationData: any = { status: 'pending', needsAdminReview: true };
+            let mrpVerificationData: Record<string, unknown> = { status: 'pending', needsAdminReview: true };
             try {
                 const verificationResult = await MRPVerificationService.verifyMRP({
                     itemName,
@@ -213,16 +215,16 @@ export default class ItemServices {
                 HSNCode,
                 weight,
                 itemGST,
-                medicineStoreId: medicineStoreId,  // Track store ownership
-                createdBy: req.user?._id,
-                createdAt: Date.now(),
+                medicineStoreId: new mongoose.Types.ObjectId(medicineStoreId),  // Track store ownership
+                createdBy: req.user?._id ? new mongoose.Types.ObjectId(req.user._id) : undefined,
+                createdAt: new Date(Date.now()),
                 mrpVerification: mrpVerificationData,
                 otherInformation: processedOtherInfo
             };
 
             console.log("New Item Data:", newItemData);
 
-            const newItem: any = await ItemModel.create(newItemData);
+            const newItem = await ItemModel.create(newItemData);
             await redis.del("deals:of-the-day");
 
             // Clear relevant cache
@@ -365,7 +367,7 @@ export default class ItemServices {
             const calculatedFinalPrice = +(itemInitialPrice * (1 + (Number(gstRate) || 0) / 100)).toFixed(2);
 
             // Process otherInformation
-            const processedOtherInfo: any = {};
+            const processedOtherInfo: Partial<Iitem['otherInformation']> = {};
             if (otherInformation) {
                 const info = typeof otherInformation === 'string' ? JSON.parse(otherInformation) : otherInformation;
 
@@ -379,7 +381,7 @@ export default class ItemServices {
                 if (info.ingredients) processedOtherInfo.ingredients = Array.isArray(info.ingredients) ? info.ingredients : [info.ingredients];
             }
 
-            const newItemData: any = {
+            const newItemData: Partial<Iitem> = {
                 itemName,
                 itemInitialPrice: Number(itemInitialPrice),
                 itemFinalPrice: Number(calculatedFinalPrice),
@@ -394,15 +396,15 @@ export default class ItemServices {
                 HSNCode,
                 weight,
                 itemGST,
-                medicineStoreId: medicineStoreId,  // Track store ownership
-                createdBy: req.user?._id,
-                createdAt: Date.now(),
+                medicineStoreId: new mongoose.Types.ObjectId(medicineStoreId),  // Track store ownership
+                createdBy: req.user?._id ? new mongoose.Types.ObjectId(req.user._id) : undefined,
+                createdAt: new Date(Date.now()),
                 otherInformation: processedOtherInfo
             };
 
             console.log("New Premium Item Data:", newItemData);
 
-            const newItem: any = await ItemModel.create(newItemData);
+            const newItem = await ItemModel.create(newItemData);
 
             // Clear relevant cache
             await redis.del(`items:store:${medicineStoreId}`);
@@ -491,13 +493,13 @@ export default class ItemServices {
                 itemFinalPrice = +((basePrice + (basePrice * gstRate) / 100)).toFixed(2);
             }
 
-            const updatedItem: any = await ItemModel.findByIdAndUpdate(
+            const updatedItem = await ItemModel.findByIdAndUpdate(
                 itemId,
                 {
                     ...updateData,
                     itemImages: imageUrls,
                     itemFinalPrice,
-                    updatedBy: req.user?._id,
+                    updatedBy: req.user?._id ? new mongoose.Types.ObjectId(req.user._id) : undefined,
                     updatedAt: new Date()
                 },
                 { new: true }
@@ -556,7 +558,7 @@ export default class ItemServices {
                 }
             }
 
-            const deletedItem: any = await ItemModel.findByIdAndDelete(itemId);
+            const deletedItem = await ItemModel.findByIdAndDelete(itemId);
             if (!deletedItem) {
                 return next(new ApiError(404, "Item not found"));
             }

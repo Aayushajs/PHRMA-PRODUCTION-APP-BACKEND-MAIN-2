@@ -12,6 +12,8 @@ import {
   PaymentStatus,
   PaymentMethod,
   ShippingMethod,
+  ReturnReason,
+  CancellationReason,
 } from "../Entities/order.Interface";
 import { Schema, Document } from "mongoose";
 
@@ -277,7 +279,6 @@ export const orderSchema = new Schema<IOrder & Document>(
     trackingNumber: {
       type: String,
       trim: true,
-      sparse: true,
     },
 
     // Delivery Timeline
@@ -338,8 +339,11 @@ export const orderSchema = new Schema<IOrder & Document>(
     // Cancellation Details
     cancellationReason: {
       type: String,
+      enum: {
+        values: Object.values(CancellationReason),
+        message: "{VALUE} is not a valid cancellation reason"
+      },
       trim: true,
-      maxlength: [300, "Cancellation reason cannot exceed 300 characters"],
     },
     cancellationDate: {
       type: Date,
@@ -356,8 +360,11 @@ export const orderSchema = new Schema<IOrder & Document>(
     },
     returnReason: {
       type: String,
+      enum: {
+        values: Object.values(ReturnReason),
+        message: "{VALUE} is not a valid return reason"
+      },
       trim: true,
-      maxlength: [300, "Return reason cannot exceed 300 characters"],
     },
     returnDate: {
       type: Date,
@@ -499,7 +506,7 @@ export const orderSchema = new Schema<IOrder & Document>(
     isDeleted: {
       type: Boolean,
       default: false,
-      index: true,
+      // index: true,
     },
   },
   {
@@ -512,6 +519,6 @@ orderSchema.index({ userId: 1, orderDate: -1 });
 orderSchema.index({ medicineStoreId: 1, orderStatus: 1 });
 orderSchema.index({ paymentStatus: 1 });
 orderSchema.index({ trackingNumber: 1 }, { sparse: true });
-orderSchema.index({ createdAt: -1 });
 orderSchema.index({ isDeleted: 1 });
+orderSchema.index({ createdAt: -1 });
 orderSchema.index({ "deliveryAddress.pincode": 1 });

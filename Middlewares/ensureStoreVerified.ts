@@ -9,7 +9,18 @@ import { Request, Response, NextFunction } from "express";
 import { catchAsyncErrors } from "../Utils/catchAsyncErrors";
 import { ApiError } from "./errorHandler";
 import MedicineStoreModel from "../Databases/Models/medicineStore.Model";
-import { VerificationStatus } from "../Databases/Entities/medicineStore.Interface";
+import { VerificationStatus, IMedicineStore } from "../Databases/Entities/medicineStore.Interface";
+import { Document } from "mongoose";
+
+// Extend Express Request with store properties
+declare global {
+    namespace Express {
+        interface Request {
+            verifiedStore?: Document & IMedicineStore;
+            store?: Document & IMedicineStore;
+        }
+    }
+}
 
 /**
  * Middleware to ensure medicine store is verified and approved
@@ -19,7 +30,7 @@ export const ensureStoreVerified = catchAsyncErrors(
     async (req: Request, res: Response, next: NextFunction) => {
         // Extract store ID from request
         // This assumes store ID comes from authenticated user or request params
-        const storeId = req.body.storeId || req.params.storeId || (req as any).store?._id;
+        const storeId = req.body.storeId || req.params.storeId || req.store?._id;
 
         if (!storeId) {
             return next(
@@ -73,7 +84,7 @@ export const ensureStoreVerified = catchAsyncErrors(
         }
 
         // Attach store to request for downstream use
-        (req as any).verifiedStore = store;
+        req.verifiedStore = store;
 
         next();
     }
@@ -84,7 +95,7 @@ export const ensureStoreVerified = catchAsyncErrors(
  */
 export const ensureLicenseValid = catchAsyncErrors(
     async (req: Request, res: Response, next: NextFunction) => {
-        const store = (req as any).verifiedStore || (req as any).store;
+        const store = req.verifiedStore || req.store;
 
         if (!store) {
             return next(

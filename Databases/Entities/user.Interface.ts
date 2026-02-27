@@ -8,6 +8,25 @@
 import mongoose from "mongoose";
 import RoleIndex from "../../Utils/Roles.enum";
 
+export interface DeliveryAddress {
+  _id?: mongoose.Types.ObjectId;
+  recipientName: string;
+  recipientPhone: string;
+  street: string;
+  area?: string;
+  city: string;
+  state: string;
+  pincode: number;
+  landmark?: string;
+  location?: {
+    longitude: number;
+    latitude: number;
+  };
+  addressType?: "Home" | "Work" | "Other";
+  isDefault?: boolean;
+  createdAt?: Date;
+}
+
 export interface Iuser {
   _id?: mongoose.Types.ObjectId;
   userName: string;
@@ -33,6 +52,7 @@ export interface Iuser {
       latitude: number;
     };
   };
+  deliveryAddresses?: DeliveryAddress[];
   role: RoleIndex;
   ProfileImage?: string[];
   recentSearches?: Array<{

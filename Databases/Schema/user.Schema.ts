@@ -81,6 +81,86 @@ export const userSchema = new Schema<Iuser & Document>(
         },
       },
     },
+    deliveryAddresses: {
+      type: [
+        {
+          recipientName: {
+            type: String,
+            required: [true, "Recipient name is required"],
+            trim: true,
+          },
+          recipientPhone: {
+            type: String,
+            required: [true, "Recipient phone is required"],
+            validate: {
+              validator: function (v: string) {
+                return /^[0-9]{10}$/.test(v.replace(/\D/g, ""));
+              },
+              message: "Invalid phone number format",
+            },
+          },
+          street: {
+            type: String,
+            required: [true, "Street address is required"],
+            trim: true,
+          },
+          area: {
+            type: String,
+            trim: true,
+          },
+          city: {
+            type: String,
+            required: [true, "City is required"],
+            trim: true,
+          },
+          state: {
+            type: String,
+            required: [true, "State is required"],
+            trim: true,
+          },
+          pincode: {
+            type: Number,
+            required: [true, "Pincode is required"],
+            validate: {
+              validator: function (v: number) {
+                return /^[0-9]{6}$/.test(v.toString());
+              },
+              message: "Invalid pincode format",
+            },
+          },
+          landmark: {
+            type: String,
+            trim: true,
+          },
+          location: {
+            longitude: {
+              type: Number,
+              min: -180,
+              max: 180,
+            },
+            latitude: {
+              type: Number,
+              min: -90,
+              max: 90,
+            },
+          },
+          addressType: {
+            type: String,
+            enum: ["Home", "Work", "Other"],
+            default: "Home",
+          },
+          isDefault: {
+            type: Boolean,
+            default: false,
+          },
+          createdAt: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+      ],
+      default: [],
+    },
     role: {
       type: String,
       required: true,
