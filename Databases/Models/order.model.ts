@@ -17,13 +17,12 @@ import {
   validateAddresses,
   validateDiscount,
 } from "../../Middlewares/orderValidation";
-import { NextFunction } from "express";
 
 // Create model
 const Order = model<IOrder>("Order", orderSchema);
 
 // Apply pre-save validation hook
-orderSchema.pre("save", function (this: IOrder, next : NextFunction) {
+orderSchema.pre("save", function (next) {
   try {
     // Validate all order fields
     validateOrderItems(this);

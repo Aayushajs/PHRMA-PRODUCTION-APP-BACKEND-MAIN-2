@@ -1,59 +1,66 @@
 /*
 ┌───────────────────────────────────────────────────────────────────────┐
-│  Orders Router - Service 2                                            │
-│  Example business logic with notification integration                 │
+│  Orders Router - Production-Grade Order Management                    │
+│  Routes for order creation, tracking, and management                  │
 └───────────────────────────────────────────────────────────────────────┘
 */
 
-import { Router, Request, Response, NextFunction } from 'express';
+import { Router } from 'express';
 import OrderService from '../../Services/order.Service';
 
 const ordersRouter = Router();
 
 // ============================================================================
-// ORDER ENDPOINTS - ALL LOGIC DELEGATED TO ORDER SERVICE
+// ORDER MANAGEMENT ENDPOINTS
 // ============================================================================
 
 /**
- * @route   GET /api/v2/orders/analytics/dashboard
- * @desc    Get order analytics and statistics for dashboard (Admin only)
- * @access  Private (Admin)
- */
-ordersRouter.get('/analytics/dashboard', OrderService.getOrderAnalytics);
-
-/**
- * @route   GET /api/v2/orders/:orderId
- * @desc    Retrieve complete order details with authorization check
- * @access  Private
- */
-ordersRouter.get('/:orderId', OrderService.getOrderDetails);
-
-/**
- * @route   PATCH /api/v2/orders/:orderId/status
- * @desc    Update order status with validation and user notification
- * @access  Private (Admin/Store)
- */
-ordersRouter.patch('/:orderId/status', OrderService.updateOrderStatus);
-
-/**
- * @route   POST /api/v2/orders/:orderId/cancel
- * @desc    Cancel order, restore items, process refund, and notify user
- * @access  Private (Customer/Admin)
- */
-ordersRouter.post('/:orderId/cancel', OrderService.cancelOrder);
-
-/**
- * @route   POST /api/v2/orders
- * @desc    Create a new order with full validation, item tracking, and notifications
+ * @route   POST /api/v1/orders
+ * @desc    Create a new order with complete validation and payment processing
  * @access  Private
  */
 ordersRouter.post('/', OrderService.createOrder);
 
 /**
- * @route   GET /api/v2/orders
- * @desc    Retrieve paginated user orders with filtering and sorting
+ * @route   PATCH /api/v1/orders/:orderId/payment
+ * @desc    Update payment status (called by payment gateway webhook)
+ * @access  Private (webhook auth required)
+ */
+ordersRouter.patch('/:orderId/payment', OrderService.updatePaymentStatus);
+
+/**
+ * @route   PATCH /api/v1/orders/:orderId/status
+ * @desc    Update order status (store/admin)
+ * @access  Private (store/admin only)
+ */
+ordersRouter.patch('/:orderId/status', OrderService.updateOrderStatus);
+
+/**
+ * @route   POST /api/v1/orders/:orderId/cancel
+ * @desc    Cancel an order
  * @access  Private
  */
-ordersRouter.get('/', OrderService.getUserOrders);
+ordersRouter.post('/:orderId/cancel', OrderService.cancelOrder);
+
+/**
+ * @route   GET /api/v1/orders/:orderId
+ * @desc    Get order details by order ID
+ * @access  Private
+ */
+ordersRouter.get('/:orderId', OrderService.getOrderById);
+
+/**
+ * @route   GET /api/v1/orders/user/:userId
+ * @desc    Get all orders for a user
+ * @access  Private
+ */
+ordersRouter.get('/user/:userId', OrderService.getUserOrders);
+
+/**
+ * @route   GET /api/v1/orders/store/:medicineStoreId
+ * @desc    Get all orders for a store
+ * @access  Private (store/admin only)
+ */
+ordersRouter.get('/store/:medicineStoreId', OrderService.getStoreOrders);
 
 export default ordersRouter;

@@ -1,773 +1,871 @@
-/*
-┌───────────────────────────────────────────────────────────────────────┐
-│  Order Service - Business logic for pharmacy order management         │
-│  Handles order creation, status updates, cancellations, and tracking  │
-│  with comprehensive logging, validation, and notification pipeline   │
-└───────────────────────────────────────────────────────────────────────┘
-*/
-
+import orderModel from "../Databases/Models/order.model";
+import User from "../Databases/Models/user.Model";
+import MedicineStore from "../Databases/Models/medicineStore.Model";
+import ItemModel from "../Databases/Models/item.Model";
 import { Request, Response, NextFunction } from "express";
 import { catchAsyncErrors } from "../Utils/catchAsyncErrors";
-import { ApiError } from "../Utils/ApiError";
+import { ApiError } from "../Middlewares/errorHandler";
 import { handleResponse } from "../Utils/handleResponse";
-import { sendNotificationToUser } from "../Utils/notificationClient";
-import Order from "../Databases/Models/order.model";
-import UserModel from "../Databases/Models/user.Model";
-import ItemModel from "../Databases/Models/item.Model";
-import MedicineStoreModel from "../Databases/Models/medicineStore.Model";
-import { redis } from "../config/redis";
-import { IOrder, OrderStatus, PaymentStatus } from "../Databases/Entities/order.Interface";
-import RoleIndex from "../Utils/Roles.enum";
+import { OrderStatus, PaymentStatus, PaymentMethod, ShippingMethod, ReturnReason, CancellationReason } from "../Databases/Entities/order.Interface";
 import mongoose from "mongoose";
+import notificationService from "./notification.Service";
+import { validateRequiredFields, validateNestedObject, validateEnum } from "../Utils/validators";
 
-/**
- * Order Service Class - Contains all business logic for order operations
- * Implements SOLID principles with proper separation of concerns
- */
-export default class OrderService {
+class OrderService {
 
-  /**
-   * Create a new order with validation and notification
-   * @route   POST /api/v2/orders
-   * @desc    Creates a new order, validates items, calculates totals, and notifies user
-   * @access  Private
-   */
-  public static createOrder = catchAsyncErrors(
-    async (req: Request, res: Response, next: NextFunction) => {
-      const { userId, medicineStoreId, items, totalAmount, deliveryAddress, paymentMethod, billingAddress } = req.body;
+    public static createOrder = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const {
+                userId,
+                orderItems,
+                medicineStoreId,
+                paymentMethod,
+                deliveryAddress,
+                billingAddress,
+                prescriptionFile,
+                couponCode,
+                specialInstructions,
+                shippingMethod = ShippingMethod.STANDARD
+            } = req.body;
 
-      // ===== REQUIRED FIELDS =====
-      const requiredFields = { userId, items, totalAmount, deliveryAddress, paymentMethod };
-      const missingFields = Object.entries(requiredFields)
-        .filter(([__, value]) => !value)
-        .map(([key]) => key);
 
-      if (missingFields.length > 0) {
-        return next(
-          new ApiError(
-            400,
-            `Missing required fields: ${missingFields.join(", ")}`
-          )
-        );
-      }
+            const basicValidation = validateRequiredFields(
+                req.body,
+                ['userId', 'medicineStoreId', 'paymentMethod'],
+                'Order'
+            );
 
-      // ===== VALIDATE INPUT DATA TYPES AND STRUCTURE =====
-      if (!Array.isArray(items) || items.length === 0) {
-        return next(new ApiError(400, "Items array must contain at least one item"));
-      }
+            if (!basicValidation.isValid) {
+                return next(new ApiError(
+                    400,
+                    `Missing required fields: ${basicValidation.missingFields.join(', ')}`
+                ));
+            }
 
-      if (typeof totalAmount !== "number" || totalAmount <= 0) {
-        return next(new ApiError(400, "Total amount must be a positive number"));
-      }
+            if (!orderItems || !Array.isArray(orderItems) || orderItems.length === 0) {
+                return next(new ApiError(400, "orderItems must be a non-empty array"));
+            }
 
-      // Validate delivery address structure
-      if (!deliveryAddress?.city || !deliveryAddress?.state || !deliveryAddress?.pincode) {
-        return next(
-          new ApiError(
-            400,
-            "Delivery address must include city, state, and pincode"
-          )
-        );
-      }
+            // Validate each order item dynamically
+            for (let i = 0; i < orderItems.length; i++) {
+                const itemValidation = validateRequiredFields(
+                    orderItems[i],
+                    ['itemId', 'quantity'],
+                    `orderItems[${i}]`
+                );
 
-      // ===== VERIFY USER EXISTS =====
-      const userExists = await UserModel.findById(userId);
-      if (!userExists) {
-        return next(new ApiError(404, "User not found"));
-      }
+                if (!itemValidation.isValid) {
+                    return next(new ApiError(
+                        400,
+                        `Invalid order item at index ${i}: ${itemValidation.missingFields.join(', ')} required`
+                    ));
+                }
 
-      if (userExists.role !== RoleIndex.CUSTOMER) {
-        return next(new ApiError(403, "Only customers can place orders"));
-      }
+                if (orderItems[i].quantity < 1) {
+                    return next(new ApiError(400, `quantity must be at least 1 for item at index ${i}`));
+                }
+            }
 
-      // ===== VERIFY MEDICINE STORE EXISTS & IS ACTIVE =====
-      const storeExists = await MedicineStoreModel.findById(medicineStoreId);
-      if (!storeExists) {
-        return next(new ApiError(404, "Medicine store not found"));
-      }
+            // Validate deliveryAddress dynamically
+            const addressValidation = validateNestedObject(
+                deliveryAddress,
+                ['street', 'city', 'state', 'pincode', 'recipientName', 'recipientPhone'],
+                'deliveryAddress'
+            );
 
-      if (!storeExists.isVerified) {
-        return next(new ApiError(403, "Medicine store is not verified"));
-      }
+            if (!addressValidation.isValid) {
+                return next(new ApiError(
+                    400,
+                    `Missing required fields: ${addressValidation.missingFields.join(', ')}`
+                ));
+            }
 
-      // ===== VALIDATE ITEMS & CALCULATE TOTALS =====
-      let calculatedSubtotal = 0;
-      let calculatedTaxAmount = 0;
-      const validatedItems = [];
+            // Validate payment method enum
+            const paymentMethodValidation = validateEnum(
+                paymentMethod,
+                PaymentMethod,
+                'paymentMethod'
+            );
 
-      for (const item of items) {
-        // Validate item structure
-        if (!item.itemId || !item.quantity) {
-          return next(
-            new ApiError(
-              400,
-              "Each item must have itemId and quantity"
-            )
-          );
+            if (!paymentMethodValidation.isValid) {
+                return next(new ApiError(400, paymentMethodValidation.message!));
+            }
+
+
+            const user = await User.findById(userId);
+            if (!user) {
+                return next(new ApiError(404, "User not found"));
+            }
+
+            const medicineStore = await MedicineStore.findById(medicineStoreId);
+            if (!medicineStore) {
+                return next(new ApiError(404, "Medicine store not found"));
+            }
+
+            if (!medicineStore.isVerified) {
+                return next(new ApiError(400, "Medicine store is not verified"));
+            }
+
+            if (!medicineStore.isActive) {
+                return next(new ApiError(400, "Medicine store is currently inactive"));
+            }
+
+            const validatedItems = [];
+            let subtotal = 0;
+            let totalTax = 0;
+            let prescriptionRequiredForOrder = false;
+
+            for (const orderItem of orderItems) {
+                if (!orderItem.itemId || !orderItem.quantity || orderItem.quantity < 1) {
+                    return next(new ApiError(400, `Invalid item data: itemId and quantity (>0) required`));
+                }
+
+
+                const item = await ItemModel.findById(orderItem.itemId)
+                    .populate<{ itemGST: { gstRate: number } }>('itemGST')
+                    .populate('itemChildUnit');
+
+                if (!item) {
+                    return next(new ApiError(404, `Item not found: ${orderItem.itemId}`));
+                }
+
+                if (item.medicineStoreId?.toString() !== medicineStoreId) {
+                    return next(new ApiError(400, `Item ${item.itemName} does not belong to selected store`));
+                }
+
+                // Check if item is in stock
+                // if (item.stock !== undefined && item.stock < orderItem.quantity) {
+                //     return next(new ApiError(400, `Insufficient stock for ${item.itemName}. Available: ${item.stock}`));
+                // }
+
+                // Check if item is expired
+                if (item.itemExpiryDate && new Date(item.itemExpiryDate) <= new Date()) {
+                    return next(new ApiError(400, `Item ${item.itemName} is expired`));
+                }
+
+                // TODO: Implement prescription requirement flag in item schema
+                // Check if prescription required for this item
+                // if (item.prescriptionRequired) {
+                //     prescriptionRequiredForOrder = true;
+                // }
+
+                // SERVER-SIDE PRICE CALCULATION (critical for security)
+                const unitPrice = item.itemFinalPrice;
+                const itemDiscount = item.itemDiscount || 0;
+                const priceAfterDiscount = unitPrice - (unitPrice * itemDiscount / 100);
+
+                // Calculate GST
+                const populatedGst = item.itemGST as { gstRate: number };
+                const gstRate = populatedGst?.gstRate || 0;
+                const gstAmount = (priceAfterDiscount * gstRate) / 100;
+
+                const totalPrice = (priceAfterDiscount + gstAmount) * orderItem.quantity;
+
+                subtotal += unitPrice * orderItem.quantity;
+                totalTax += gstAmount * orderItem.quantity;
+
+                validatedItems.push({
+                    itemId: item._id,
+                    itemName: item.itemName,
+                    quantity: orderItem.quantity,
+                    unitPrice: unitPrice,
+                    totalPrice: totalPrice,
+                    itemBatchNumber: item.itemBatchNumber,
+                    itemExpiryDate: item.itemExpiryDate,
+                    discount: itemDiscount,
+                    gstAmount: gstAmount * orderItem.quantity,
+                    hsnCode: item.HSNCode
+                });
+            }
+
+            if (prescriptionRequiredForOrder && !prescriptionFile) {
+                return next(new ApiError(400, "Prescription is required for prescription medicines in your order"));
+            }
+
+            // APPLY & VALIDATE COUPON CODE
+            let discount = 0;
+            let discountPercentage = 0;
+
+            if (couponCode) {
+                // TODO: Implement coupon validation
+                // - Check if coupon exists and is valid
+                // - Check if user is eligible
+                // - Check if minimum order value met
+                // - Check usage limits
+                // - Calculate discount
+                console.warn("⚠️  Coupon validation not implemented yet");
+            }
+
+            // CALCULATE SHIPPING COST
+            let shippingCost = 0;
+
+            // TODO: Implement shipping cost calculation based on:
+            // - Distance between store and delivery address
+            // - Shipping method (standard, express)
+            // - Order value (free shipping above threshold)
+            // - Item weight/dimensions
+
+            if (subtotal < 500) {
+                shippingCost = 40; // Base shipping
+            }
+
+            if (shippingMethod === ShippingMethod.EXPRESS) {
+                shippingCost += 100;
+            }
+
+            const totalAmount = subtotal - discount + totalTax + shippingCost;
+
+            if (totalAmount <= 0) {
+                return next(new ApiError(400, "Invalid order total"));
+            }
+
+            const orderId = `ORD${Date.now()}${Math.floor(Math.random() * 1000)}`;
+
+            let paymentStatus = PaymentStatus.PENDING;
+            let paymentId = null;
+
+            if (paymentMethod === PaymentMethod.CASH_ON_DELIVERY) {
+                paymentStatus = PaymentStatus.PENDING;
+            } else {
+                // TODO: Integrate with payment gateway (Razorpay, Stripe, etc.)
+                // - Create payment order
+                // - Return payment gateway order details to client
+                // - Client completes payment
+                // - Webhook/callback updates order status
+
+                // For now, generate payment ID
+                paymentId = `PAY${Date.now()}`;
+
+                // NOTE: In production, order should be created with PENDING status
+                // and only confirmed after successful payment verification
+                console.warn("⚠️  Payment gateway integration pending");
+            }
+
+            const session = await mongoose.startSession();
+            session.startTransaction();
+
+            try {
+                const newOrder = await orderModel.create([{
+                    orderId,
+                    userId,
+                    medicineStoreId,
+                    orderItems: validatedItems,
+                    subtotal,
+                    discount,
+                    discountPercentage,
+                    taxAmount: totalTax,
+                    shippingCost,
+                    totalAmount,
+                    deliveryAddress,
+                    billingAddress: billingAddress || deliveryAddress,
+                    paymentMethod,
+                    paymentStatus,
+                    paymentId,
+                    orderStatus: OrderStatus.PENDING,
+                    shippingMethod,
+                    orderDate: new Date(),
+                    estimatedDeliveryDate: this.calculateEstimatedDelivery(shippingMethod),
+                    prescriptionRequired: prescriptionRequiredForOrder,
+                    prescriptionFile: prescriptionFile || undefined,
+                    prescriptionVerified: false,
+                    specialInstructions,
+                    isReturnable: true,
+                    couponCode: couponCode || undefined
+                }], { session });
+
+                // UPDATE INVENTORY (RESERVE STOCK)
+
+                // TODO: Implement stock management in item schema
+                // for (const item of validatedItems) {
+                //     await ItemModel.findByIdAndUpdate(
+                //         item.itemId,
+                //         { 
+                //             $inc: { 
+                //                 stock: -item.quantity,
+                //                 // Optionally track reserved stock separately
+                //                 // reservedStock: item.quantity 
+                //             } 
+                //         },
+                //         { session }
+                //     );
+                // }
+
+                // Commit transaction
+                await session.commitTransaction();
+
+                // SEND NOTIFICATIONS (ASYNC)
+                // Send to customer
+                notificationService.sendToUser({
+                    userId: userId,
+                    title: "Order Placed Successfully!",
+                    body: `Your order #${orderId} has been placed. Total: ₹${totalAmount}`,
+                    data: {
+                        orderId,
+                        type: "order_placed",
+                        screen: "OrderDetails"
+                    }
+                }).catch(err => console.error("Notification error:", err));
+
+                // TODO: Send notification to store
+                // TODO: Send email confirmation
+                // TODO: Queue invoice generation job
+                // TODO: Update analytics
+
+                // ================================================================
+                // STEP 13: RETURN RESPONSE
+                // ================================================================
+                return handleResponse(req, res, 201, "Order created successfully", {
+                    order: newOrder[0],
+                    paymentRequired: paymentMethod !== PaymentMethod.CASH_ON_DELIVERY,
+                    paymentId,
+                    // In production, return payment gateway order details here
+                    nextStep: paymentMethod === PaymentMethod.CASH_ON_DELIVERY
+                        ? "Order confirmed, will be delivered soon"
+                        : "Complete payment to confirm order"
+                });
+
+            } catch (error) {
+                // Rollback transaction on error
+                await session.abortTransaction();
+                throw error;
+            } finally {
+                session.endSession();
+            }
+        }
+    );
+
+    /**
+     * Calculate estimated delivery date based on shipping method
+     * Medicine delivery can be within hours/minutes for urgent orders
+     */
+    private static calculateEstimatedDelivery(shippingMethod: ShippingMethod): Date {
+        const now = new Date();
+        let minutesToAdd = 240; // default: 4 hours
+
+        switch (shippingMethod) {
+            case ShippingMethod.EXPRESS:
+                minutesToAdd = 120; // 2 hours
+                break;
+            case ShippingMethod.OVERNIGHT:
+                minutesToAdd = 60; // 1 hour
+                break;
+            case ShippingMethod.STANDARD:
+                minutesToAdd = 240; // 4 hours
+                break;
+            case ShippingMethod.LOCAL_PICKUP:
+                minutesToAdd = 30; // 30 minutes
+                break;
         }
 
-        if (item.quantity <= 0) {
-          return next(new ApiError(400, "Item quantity must be greater than 0"));
-        }
-
-        // Fetch item from database
-        const itemData = await ItemModel.findById(item.itemId);
-        if (!itemData) {
-          return next(new ApiError(404, `Item with ID ${item.itemId} not found`));
-        }
-
-        // Check item availability and validity
-        // Note: itemAvailable tracking can be implemented in future versions
-        // For now, we proceed with order creation and assume inventory management is done separately
-
-        // Check expiry date
-        if (itemData.itemExpiryDate && new Date(itemData.itemExpiryDate) < new Date()) {
-          return next(new ApiError(400, `Item ${itemData.itemName} has expired`));
-        }
-
-        // Calculate item total and tax
-        const unitPrice = item.unitPrice || itemData.itemInitialPrice;
-        const itemTotal = unitPrice * item.quantity;
-        // GST is a reference to GST model, will need to be populated for exact calculation
-        const gstAmount = itemTotal * 0.05; // Default 5% GST, should be fetched from GST model
-
-        calculatedSubtotal += itemTotal;
-        calculatedTaxAmount += gstAmount;
-
-        validatedItems.push({
-          itemId: itemData._id,
-          itemName: itemData.itemName,
-          quantity: item.quantity,
-          unitPrice,
-          totalPrice: itemTotal,
-          itemBatchNumber: itemData.code || "N/A",
-          itemExpiryDate: itemData.itemExpiryDate,
-          discount: item.discount || 0,
-          gstAmount,
-          hsnCode: itemData.HSNCode,
-        });
-      }
-
-      const calculatedTotalAmount = calculatedSubtotal + calculatedTaxAmount - (items.reduce((sum, item) => sum + (item.discount || 0), 0));
-
-      // Verify total amount matches calculated total (with 1% tolerance for rounding)
-      const tolerance = calculatedTotalAmount * 0.01;
-      if (Math.abs(totalAmount - calculatedTotalAmount) > tolerance) {
-        console.warn(
-          `Total amount mismatch. Expected: ${calculatedTotalAmount}, Provided: ${totalAmount}`
-        );
-        // Don't reject, just warn - frontend might have applied additional discounts
-      }
-
-      // ===== CREATE ORDER OBJECT =====
-      const orderId = `ORD${Date.now()}${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-
-      const orderData: Partial<IOrder> = {
-        orderId,
-        userId: new mongoose.Types.ObjectId(userId),
-        medicineStoreId: new mongoose.Types.ObjectId(medicineStoreId || storeExists._id as any),
-        orderItems: validatedItems,
-        subtotal: calculatedSubtotal,
-        taxAmount: calculatedTaxAmount,
-        discount: items.reduce((sum, item) => sum + (item.discount || 0), 0),
-        totalAmount: calculatedTotalAmount,
-        deliveryAddress: {
-          street: deliveryAddress.street,
-          area: deliveryAddress.area,
-          city: deliveryAddress.city,
-          state: deliveryAddress.state,
-          pincode: deliveryAddress.pincode,
-          landmark: deliveryAddress.landmark,
-          location: deliveryAddress.location,
-          recipientName: deliveryAddress.recipientName || userExists.userName,
-          recipientPhone: deliveryAddress.recipientPhone || userExists.phone,
-        },
-        billingAddress: billingAddress,
-      };
-
-      // ===== CREATE ORDER OBJECT =====
-      const createdOrder = await Order.create(orderData);
-
-      if (!createdOrder) {
-        return next(new ApiError(500, "Failed to create order"));
-      }
-
-      console.log(`✅ Order created successfully: ${orderId}`);
-
-      // ===== UPDATE ITEM AVAILABILITY =====
-      // Note: Item availability tracking is not yet implemented in the schema
-      // This step should be implemented once inventory management is added
-
-      // ===== SEND NOTIFICATION TO USER (NON-BLOCKING) =====
-      const notificationData = {
-        orderId: createdOrder._id,
-        orderNumber: orderId,
-        type: "order_confirmation",
-        screen: "OrderDetails",
-        amount: totalAmount.toString(),
-        itemCount: validatedItems.length.toString(),
-      };
-
-      sendNotificationToUser(
-        userId,
-        "🎉 Order Confirmed!",
-        `Your order #${orderId} has been placed successfully. Total: ₹${totalAmount.toFixed(2)}. ${validatedItems.length} item(s)`,
-        notificationData
-      )
-        .then((result) => {
-          if (result.success) {
-            console.log(`✅ Order confirmation notification sent to user ${userId}`);
-          } else if (result.queued) {
-            console.log(`📋 Order confirmation notification queued for user ${userId}`);
-          } else {
-            console.error(`❌ Failed to send notification: ${result.error}`);
-          }
-        })
-        .catch((err) => {
-          console.error(`❌ Notification error for order ${orderId}:`, err);
-        });
-
-      // ===== CACHE ORDER DATA FOR QUICK RETRIEVAL =====
-      try {
-        await redis.setEx(
-          `order:${createdOrder._id}`,
-          3600, // 1 hour TTL
-          JSON.stringify(createdOrder)
-        );
-      } catch (error) {
-        console.warn("⚠️ Redis caching failed for order, continuing anyway:", error);
-      }
-
-      // ===== RETURN RESPONSE =====
-      const responseData = createdOrder.toObject();
-
-      return handleResponse(
-        req,
-        res,
-        201,
-        "Order created successfully",
-        {
-          order: responseData,
-          message: "Order confirmation has been sent to your registered email and phone number",
-        }
-      );
+        // Add minutes to current time
+        now.setMinutes(now.getMinutes() + minutesToAdd);
+        return now;
     }
-  );
 
-  /**
-   * Update order status with comprehensive validation and notifications
-   * @route   PATCH /api/v2/orders/:orderId/status
-   * @desc    Updates order status and sends appropriate notification to user
-   * @access  Private (Admin/Store)
-   */
-  public static updateOrderStatus = catchAsyncErrors(
-    async (req: Request, res: Response, next: NextFunction) => {
-      const { orderId } = req.params;
-      const { status, userId, notes } = req.body;
+    /**
+     * ========================================================================
+     * UPDATE PAYMENT STATUS (Called by payment gateway webhook)
+     * ========================================================================
+     */
+    public static updatePaymentStatus = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const { orderId, paymentId, paymentStatus, transactionId } = req.body;
 
-      // ===== VALIDATE INPUT =====
-      if (!status) {
-        return next(new ApiError(400, "Status is required"));
-      }
+            if (!orderId || !paymentStatus) {
+                return next(new ApiError(400, "orderId and paymentStatus are required"));
+            }
 
-      if (!userId) {
-        return next(new ApiError(400, "User ID is required"));
-      }
+            const order = await orderModel.findOne({ orderId });
+            if (!order) {
+                return next(new ApiError(404, "Order not found"));
+            }
 
-      // Validate status is a valid enum value
-      const validStatuses = Object.values(OrderStatus);
-      if (!validStatuses.includes(status)) {
-        return next(
-          new ApiError(
-            400,
-            `Invalid status. Allowed values: ${validStatuses.join(", ")}`
-          )
-        );
-      }
+            const session = await mongoose.startSession();
+            session.startTransaction();
 
-      // ===== VERIFY ORDER EXISTS =====
-      const order = await Order.findById(orderId) as any;
-      if (!order) {
-        return next(new ApiError(404, "Order not found"));
-      }
+            try {
+                // Update payment status
+                order.paymentStatus = paymentStatus;
+                order.paymentId = paymentId;
+                order.paymentDate = new Date();
 
-      // ===== VALIDATE STATUS TRANSITION =====
-      const validTransitions: Record<string, string[]> = {
-        [OrderStatus.PENDING]: [OrderStatus.CONFIRMED, OrderStatus.CANCELLED],
-        [OrderStatus.CONFIRMED]: [OrderStatus.PROCESSING, OrderStatus.CANCELLED],
-        [OrderStatus.PROCESSING]: [OrderStatus.SHIPPED, OrderStatus.CANCELLED],
-        [OrderStatus.SHIPPED]: [OrderStatus.OUT_FOR_DELIVERY, OrderStatus.CANCELLED],
-        [OrderStatus.OUT_FOR_DELIVERY]: [OrderStatus.DELIVERED, OrderStatus.FAILED],
-        [OrderStatus.DELIVERED]: [OrderStatus.RETURNED],
-        [OrderStatus.CANCELLED]: [],
-        [OrderStatus.RETURNED]: [],
-        [OrderStatus.FAILED]: [OrderStatus.PROCESSING, OrderStatus.CANCELLED],
-      };
+                if (transactionId) {
+                    order.paymentDetails = {
+                        ...order.paymentDetails,
+                        transactionId
+                    };
+                }
 
-      const currentStatus = order.orderStatus || OrderStatus.PENDING;
-      if (!validTransitions[currentStatus]?.includes(status)) {
-        return next(
-          new ApiError(
-            400,
-            `Cannot transition from ${currentStatus} to ${status}`
-          )
-        );
-      }
+                // If payment successful, confirm order
+                if (paymentStatus === PaymentStatus.COMPLETED) {
+                    order.orderStatus = OrderStatus.CONFIRMED;
+                    order.confirmedDate = new Date();
 
-      // ===== UPDATE ORDER STATUS =====
-      const updatedOrder = await Order.findByIdAndUpdate(
-        orderId,
-        {
-          orderStatus: status,
-          updatedAt: new Date(),
-        },
-        { new: true }
-      );
+                    // Send confirmation notification
+                    await notificationService.sendToUser({
+                        userId: order.userId.toString(),
+                        title: "Payment Successful! ✅",
+                        body: `Payment confirmed for order #${orderId}. Your order is being processed.`,
+                        data: {
+                            orderId,
+                            type: "payment_success",
+                            screen: "OrderDetails"
+                        }
+                    }).catch(err => console.error("Notification error:", err));
+                } else if (paymentStatus === PaymentStatus.FAILED) {
+                    // TODO: Restore inventory if payment failed (when stock management is implemented)
+                    // for (const item of order.orderItems) {
+                    //     await ItemModel.findByIdAndUpdate(
+                    //         item.itemId,
+                    //         { $inc: { stock: item.quantity } },
+                    //         { session }
+                    //     );
+                    // }
 
-      if (!updatedOrder) {
-        return next(new ApiError(500, "Failed to update order status"));
-      }
+                    order.orderStatus = OrderStatus.FAILED;
 
-      console.log(`📦 Order ${orderId} status updated to: ${status}`);
+                    await notificationService.sendToUser({
+                        userId: order.userId.toString(),
+                        title: "Payment Failed ❌",
+                        body: `Payment failed for order #${orderId}. Please try again.`,
+                        data: {
+                            orderId,
+                            type: "payment_failed",
+                            screen: "OrderDetails"
+                        }
+                    }).catch(err => console.error("Notification error:", err));
+                }
 
-      // ===== PREPARE NOTIFICATION MESSAGE =====
-      let notificationTitle = "";
-      let notificationBody = "";
-      let emoji = "📦";
+                await order.save({ session });
+                await session.commitTransaction();
 
-      switch (status) {
-        case OrderStatus.CONFIRMED:
-          emoji = "✅";
-          notificationTitle = "Order Confirmed";
-          notificationBody = `Your order #${order.orderId} has been confirmed. We're preparing your items.`;
-          break;
-        case OrderStatus.PROCESSING:
-          emoji = "⏳";
-          notificationTitle = "Processing Started";
-          notificationBody = `Your order #${order.orderId} is being processed. Estimated shipping: 2-3 days.`;
-          break;
-        case OrderStatus.SHIPPED:
-          emoji = "🚚";
-          notificationTitle = "Order Shipped";
-          notificationBody = `Your order #${order.orderId} has been shipped! Track your package to monitor delivery.`;
-          break;
-        case OrderStatus.OUT_FOR_DELIVERY:
-          emoji = "🚚";
-          notificationTitle = "Out for Delivery";
-          notificationBody = `Your order #${order.orderId} is out for delivery today. Our delivery partner will reach you soon.`;
-          break;
-        case OrderStatus.DELIVERED:
-          emoji = "✅";
-          notificationTitle = "Order Delivered";
-          notificationBody = `Your order #${order.orderId} has been delivered! Thank you for your purchase.`;
-          break;
-        case OrderStatus.CANCELLED:
-          emoji = "❌";
-          notificationTitle = "Order Cancelled";
-          notificationBody = `Your order #${order.orderId} has been cancelled. ${notes || "Please contact support for details."}`;
-          break;
-        case OrderStatus.RETURNED:
-          emoji = "↩️";
-          notificationTitle = "Return Processing";
-          notificationBody = `Your return for order #${order.orderId} is being processed. Refund will be credited within 5-7 days.`;
-          break;
-        case OrderStatus.FAILED:
-          emoji = "❌";
-          notificationTitle = "Delivery Failed";
-          notificationBody = `Delivery for order #${order.orderId} could not be completed. We'll retry soon.`;
-          break;
-        default:
-          notificationTitle = "Order Status Update";
-          notificationBody = `Your order #${order.orderId} status: ${status}`;
-      }
+                return handleResponse(req, res, 200, "Payment status updated", order);
 
-      // ===== SEND NOTIFICATION =====
-      const notificationData = {
-        orderId: updatedOrder._id,
-        orderNumber: order.orderId,
-        status,
-        type: "order_status_update",
-        screen: "OrderDetails",
-        timestamp: new Date().toISOString(),
-      };
-
-      sendNotificationToUser(
-        userId,
-        `${emoji} ${notificationTitle}`,
-        notificationBody,
-        notificationData
-      )
-        .then((result) => {
-          if (result.success) {
-            console.log(` Status notification sent to user ${userId}`);
-          } else if (result.queued) {
-            console.log(` Status notification queued for user ${userId}`);
-          } else {
-            console.error(` Failed to send status notification: ${result.error}`);
-          }
-        })
-        .catch((err) => {
-          console.error(` Notification error for order ${orderId}:`, err);
-        });
-
-      // ===== INVALIDATE CACHE =====
-      try {
-        await redis.del(`order:${orderId}`);
-      } catch (error) {
-        console.warn(" Cache invalidation failed:", error);
-      }
-
-      // ===== RETURN RESPONSE =====
-      return handleResponse(
-        req,
-        res,
-        200,
-        "Order status updated successfully",
-        {
-          order: updatedOrder,
+            } catch (error) {
+                await session.abortTransaction();
+                throw error;
+            } finally {
+                session.endSession();
+            }
         }
-      );
-    }
-  );
+    );
 
-  /**
-   * Cancel an order with refund processing
-   * @route   POST /api/v2/orders/:orderId/cancel
-   * @desc    Cancels order, processes refund, and notifies user
-   * @access  Private (Customer/Admin)
-   */
-  public static cancelOrder = catchAsyncErrors(
-    async (req: Request, res: Response, next: NextFunction) => {
-      const { orderId } = req.params;
-      const { userId, reason, refundNotes } = req.body;
+    /**
+     * ========================================================================
+     * UPDATE ORDER STATUS (Store/Admin updates order progress)
+     * ========================================================================
+     */
+    public static updateOrderStatus = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const { orderId } = req.params;
+            const { orderStatus, trackingNumber, deliveryNotes } = req.body;
 
-      // ===== VALIDATE INPUT =====
-      if (!userId) {
-        return next(new ApiError(400, "User ID is required"));
-      }
+            if (!orderStatus) {
+                return next(new ApiError(400, "orderStatus is required"));
+            }
 
-      // ===== VERIFY ORDER EXISTS =====
-      const order = await Order.findById(orderId);
-      if (!order) {
-        return next(new ApiError(404, "Order not found"));
-      }
+            if (!Object.values(OrderStatus).includes(orderStatus)) {
+                return next(new ApiError(400, "Invalid order status"));
+            }
 
-      // ===== VALIDATE CANCELLATION ELIGIBILITY =====
-      const cancellableStatuses = [
-        OrderStatus.PENDING,
-        OrderStatus.CONFIRMED,
-        OrderStatus.PROCESSING,
-      ];
+            const order = await orderModel.findOne({ orderId });
+            if (!order) {
+                return next(new ApiError(404, "Order not found"));
+            }
 
-      if (!cancellableStatuses.includes(order.orderStatus as OrderStatus)) {
-        return next(
-          new ApiError(
-            400,
-            `Cannot cancel order in ${order.orderStatus} status. Only ${cancellableStatuses.join(", ")} orders can be cancelled.`
-          )
-        );
-      }
+            // Validate status transition
+            const currentStatus = order.orderStatus;
 
-      // ===== VERIFY USER AUTHORIZATION =====
-      const userExists = await UserModel.findById(userId);
-      if (!userExists) {
-        return next(new ApiError(404, "User not found"));
-      }
+            // Define valid status transitions (CANCELLED/FAILED handled by separate endpoints)
+            const validTransitions: Record<OrderStatus, OrderStatus[]> = {
+                [OrderStatus.PENDING]: [OrderStatus.CONFIRMED],
+                [OrderStatus.CONFIRMED]: [OrderStatus.PROCESSING],
+                [OrderStatus.PROCESSING]: [OrderStatus.SHIPPED],
+                [OrderStatus.SHIPPED]: [OrderStatus.OUT_FOR_DELIVERY],
+                [OrderStatus.OUT_FOR_DELIVERY]: [OrderStatus.DELIVERED],
+                [OrderStatus.DELIVERED]: [OrderStatus.RETURNED],
+                [OrderStatus.CANCELLED]: [], // Use cancelOrder endpoint instead
+                [OrderStatus.RETURNED]: [], // Final state
+                [OrderStatus.FAILED]: [] // Final state
+            };
 
-      // Check if user is order owner or admin
-      if (order.userId.toString() !== userId && userExists.role !== RoleIndex.ADMIN) {
-        return next(
-          new ApiError(
-            403,
-            "You are not authorized to cancel this order"
-          )
-        );
-      }
+            // Check if transition is valid
+            if (!validTransitions[currentStatus]?.includes(orderStatus)) {
+                return next(new ApiError(
+                    400,
+                    `Cannot change order status from ${currentStatus} to ${orderStatus}`
+                ));
+            }
 
-      // ===== UPDATE ORDER STATUS =====
-      (order as any).orderStatus = OrderStatus.CANCELLED;
-      const cancelledOrder = await order.save();
+            // Additional business rule validations
+            if (orderStatus === OrderStatus.SHIPPED && !trackingNumber) {
+                return next(new ApiError(400, "Tracking number is required when shipping order"));
+            }
 
-      console.log(` Order ${orderId} cancelled. Reason: ${reason || "Not specified"}`);
+            if (orderStatus === OrderStatus.CONFIRMED && order.paymentStatus !== PaymentStatus.COMPLETED
+                && order.paymentMethod !== PaymentMethod.CASH_ON_DELIVERY) {
+                return next(new ApiError(400, "Cannot confirm order - payment not completed"));
+            }
 
-      // ===== RESTORE ITEM AVAILABILITY =====
-      // Note: Item availability tracking is not yet implemented in the schema
-      // This step should be implemented once inventory management is added
-      console.log(`✅ Cancelled order ${orderId}, ready for potential inventory restoration`);
+            // Update status and related timestamps
+            order.orderStatus = orderStatus;
 
-      // ===== STEP 7: SEND CANCELLATION NOTIFICATION =====
-      const notificationMessage = reason
-        ? `Reason: ${reason}`
-        : "Your cancellation request has been processed.";
+            if (deliveryNotes) {
+                order.deliveryNotes = deliveryNotes;
+            }
 
-      const notificationData = {
-        orderId: cancelledOrder._id,
-        orderNumber: order.orderId,
-        reason: reason || "User requested",
-        type: "order_cancelled",
-        screen: "OrderDetails",
-        refundStatus: "Processing",
-        cancelledAt: new Date().toISOString(),
-      };
+            if (trackingNumber) {
+                order.trackingNumber = trackingNumber;
+            }
 
-      sendNotificationToUser(
-        userId,
-        " Order Cancelled",
-        `Your order #${order.orderId} has been cancelled. ${notificationMessage}. Refund will be processed within 5-7 business days.`,
-        notificationData
-      )
-        .then((result) => {
-          if (result.success || result.queued) {
-            console.log(`✅ Cancellation notification sent to user ${userId}`);
-          } else {
-            console.error(` Failed to send cancellation notification: ${result.error}`);
-          }
-        })
-        .catch((err) => {
-          console.error(` Notification error for cancelled order ${orderId}:`, err);
-        });
+            // Update timestamps based on status
+            // Note: Using full Date() object to track exact time (hours/minutes) 
+            // Critical for e-pharmacy with rapid delivery (within hours/minutes)
+            const currentTimestamp = new Date();
 
-      // ===== STEP 8: INVALIDATE CACHE =====
-      try {
-        await redis.del(`order:${orderId}`);
-      } catch (error) {
-        console.warn(" Cache invalidation failed:", error);
-      }
-      try {
-        await redis.del(`order:${cancelledOrder._id}`);
-      } catch (error) {
-        console.warn(" Cache invalidation for new ID failed:", error);
-      }
+            switch (orderStatus) {
+                case OrderStatus.PENDING:
+                    // Order is pending - initial state
+                    order.orderDate = currentTimestamp;
+                    break;
 
-      // ===== STEP 9: RETURN RESPONSE =====
-      return handleResponse(
-        req,
-        res,
-        200,
-        "Order cancelled successfully",
-        {
-          order: cancelledOrder,
-          refundStatus: "Processing",
-          message: "Refund will be credited to your original payment method within 5-7 business days",
+                case OrderStatus.CONFIRMED:
+                    order.confirmedDate = currentTimestamp;
+                    break;
+
+                case OrderStatus.PROCESSING:
+                    order.processedDate = currentTimestamp;
+                    break;
+
+                case OrderStatus.SHIPPED:
+                    order.shippedDate = currentTimestamp;
+                    if (trackingNumber) {
+                        order.trackingNumber = trackingNumber;
+                    }
+                    break;
+
+                case OrderStatus.OUT_FOR_DELIVERY:
+                    // Track via delivery notes since outForDeliveryDate field doesn't exist
+                    order.deliveryNotes = `Out for delivery at ${currentTimestamp.toLocaleString()}`;
+                    break;
+
+                case OrderStatus.DELIVERED:
+                    order.actualDeliveryDate = currentTimestamp;
+                    order.isReturnable = true; // Enable return option after delivery
+                    break;
+
+                case OrderStatus.RETURNED:
+                    order.returnDate = currentTimestamp;
+                    order.isReturnable = false;
+                    break;
+
+                // CANCELLED and FAILED should use dedicated cancelOrder endpoint
+                default:
+                    return next(new ApiError(400, `Status ${orderStatus} cannot be set via updateOrderStatus. Use appropriate endpoint.`));
+            }
+
+            await order.save();
+
+            // Send notification to user
+            const statusMessages: Record<OrderStatus, string> = {
+                [OrderStatus.PENDING]: "Order is pending",
+                [OrderStatus.CONFIRMED]: "Order confirmed! We're preparing your medicines.",
+                [OrderStatus.PROCESSING]: "Your order is being processed",
+                [OrderStatus.SHIPPED]: `Order shipped! Track: ${trackingNumber || 'Check app'}`,
+                [OrderStatus.OUT_FOR_DELIVERY]: "Your order is out for delivery!",
+                [OrderStatus.DELIVERED]: "Order delivered successfully! 🎉",
+                [OrderStatus.CANCELLED]: "Order has been cancelled",
+                [OrderStatus.RETURNED]: "Order returned",
+                [OrderStatus.FAILED]: "Order failed"
+            };
+
+            const notificationBody = statusMessages[orderStatus as OrderStatus] || "Order status updated";
+
+            await notificationService.sendToUser({
+                userId: order.userId.toString(),
+                title: `Order ${orderStatus}`,
+                body: notificationBody,
+                data: {
+                    orderId,
+                    orderStatus,
+                    trackingNumber,
+                    type: "order_status_update",
+                    screen: "OrderDetails"
+                }
+            }).catch(err => console.error("Notification error:", err));
+
+            return handleResponse(req, res, 200, "Order status updated", order);
         }
-      );
-    }
-  );
+    );
 
-  /**
-   * Retrieve single order details with comprehensive information
-   * @route   GET /api/v2/orders/:orderId
-   * @desc    Fetches complete order details including items, tracking, and status
-   * @access  Private
-   */
-  public static getOrderDetails = catchAsyncErrors(
-    async (req: Request, res: Response, next: NextFunction) => {
-      const { orderId } = req.params;
-      const { userId } = req.body;
+    /**
+     * ========================================================================
+     * CANCEL ORDER
+     * ========================================================================
+     */
+    public static cancelOrder = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const { orderId } = req.params;
+            const { cancellationReason, cancelledBy = "user" } = req.body;
 
-      // ===== STEP 1: VALIDATE INPUT =====
-      if (!userId) {
-        return next(new ApiError(400, "User ID is required"));
-      }
+            // Validate cancellationReason is provided
+            if (!cancellationReason) {
+                return next(new ApiError(400, "cancellationReason is required"));
+            }
 
-      // ===== CHECK CACHE FIRST =====
-      try {
-        const cachedOrder = await redis.get(`order:${orderId}`);
-        if (cachedOrder) {
-          console.log(`✅ Order ${orderId} retrieved from cache`);
-          const parsedOrder = JSON.parse(cachedOrder);
-          return handleResponse(
-            req,
-            res,
-            200,
-            "Order details retrieved from cache",
-            { order: parsedOrder, cached: true }
-          );
+            // Validate cancellationReason enum
+            const cancellationReasonValidation = validateEnum(
+                cancellationReason,
+                CancellationReason,
+                'cancellationReason'
+            );
+            
+            if (!cancellationReasonValidation.isValid) {
+                return next(new ApiError(400, cancellationReasonValidation.message!));
+            }
+
+            // Validate cancelledBy enum
+            const validCancelledBy = ["user", "store", "system"];
+            if (cancelledBy && !validCancelledBy.includes(cancelledBy)) {
+                return next(new ApiError(400, `Invalid cancelledBy value. Must be one of: ${validCancelledBy.join(', ')}`));
+            }
+
+            const order = await orderModel.findOne({ orderId });
+            if (!order) {
+                return next(new ApiError(404, "Order not found"));
+            }
+
+            // Check if order can be cancelled
+            if ([OrderStatus.SHIPPED, OrderStatus.DELIVERED, OrderStatus.CANCELLED].includes(order.orderStatus)) {
+                return next(new ApiError(400, "Order cannot be cancelled at this stage"));
+            }
+
+            const session = await mongoose.startSession();
+            session.startTransaction();
+
+            try {
+                // TODO: Restore inventory (when stock management is implemented)
+                // for (const item of order.orderItems) {
+                //     await ItemModel.findByIdAndUpdate(
+                //         item.itemId,
+                //         { $inc: { stock: item.quantity } },
+                //         { session }
+                //     );
+                // }
+
+                // Update order
+                order.orderStatus = OrderStatus.CANCELLED;
+                order.cancellationReason = cancellationReason;
+                order.cancellationDate = new Date(); // Tracks exact timestamp (date + time)
+                order.cancelledBy = cancelledBy;
+
+                // If payment was completed, initiate refund
+                if (order.paymentStatus === PaymentStatus.COMPLETED) {
+                    order.refundStatus = PaymentStatus.PENDING;
+                    order.refundAmount = order.totalAmount;
+                    // TODO: Integrate with payment gateway for refund
+                }
+
+                await order.save({ session });
+                await session.commitTransaction();
+
+                // Send notification
+                await notificationService.sendToUser({
+                    userId: order.userId.toString(),
+                    title: "Order Cancelled",
+                    body: `Order #${orderId} has been cancelled${order.refundAmount ? `. Refund of ₹${order.refundAmount} will be processed.` : '.'}`,
+                    data: {
+                        orderId,
+                        type: "order_cancelled",
+                        screen: "OrderDetails"
+                    }
+                }).catch(err => console.error("Notification error:", err));
+
+                return handleResponse(req, res, 200, "Order cancelled successfully", order);
+
+            } catch (error) {
+                await session.abortTransaction();
+                throw error;
+            } finally {
+                session.endSession();
+            }
         }
-      } catch (error) {
-        console.warn("⚠️ Cache retrieval failed:", error);
-      }
+    );
 
-      // ===== FETCH FROM DATABASE =====
-      const order = await Order.findById(orderId)
-        .populate("userId", "userName email phone")
-        .populate("medicineStoreId", "storeName storePhone address")
-        .populate("orderItems.itemId", "itemName itemInitialPrice itemAvailable");
+    /**
+     * ========================================================================
+     * GET ORDER BY ID
+     * ========================================================================
+     */
+    public static getOrderById = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const { orderId } = req.params;
 
-      if (!order) {
-        return next(new ApiError(404, "Order not found"));
-      }
+            const order = await orderModel.findOne({ orderId })
+                .populate('userId', 'name email phone')
+                .populate('medicineStoreId', 'storeName storeAddress storePhone')
+                .populate('orderItems.itemId', 'itemName itemImages');
 
-      // ===== VERIFY USER AUTHORIZATION =====
-      const userExists = await UserModel.findById(userId);
-      if (!userExists) {
-        return next(new ApiError(404, "User not found"));
-      }
+            if (!order) {
+                return next(new ApiError(404, "Order not found"));
+            }
 
-      if (order.userId._id.toString() !== userId && userExists.role !== RoleIndex.ADMIN) {
-        return next(
-          new ApiError(403, "You are not authorized to view this order")
-        );
-      }
-
-      // ===== ORDER DATA =====
-      try {
-        await redis.setEx(
-          `order:${orderId}`,
-          3600, // 1 hour TTL
-          JSON.stringify(order)
-        );
-      } catch (error) {
-        console.warn("⚠️ Redis caching failed:", error);
-      }
-
-      // ===== RETURN RESPONSE =====
-      return handleResponse(
-        req,
-        res,
-        200,
-        "Order details retrieved successfully",
-        {
-          order,
-          cached: false,
+            return handleResponse(req, res, 200, "Order retrieved", order);
         }
-      );
-    }
-  );
+    );
 
-  /**
-   * Retrieve all orders for a user with pagination and filtering
-   * @route   GET /api/v2/orders
-   * @desc    Fetches paginated list of orders for authenticated user
-   * @access  Private
-   */
-  public static getUserOrders = catchAsyncErrors(
-    async (req: Request, res: Response, next: NextFunction) => {
-      const { userId } = req.body;
-      const { page = 1, limit = 10, status, sortBy = "-createdAt" } = req.query;
+    /**
+     * ========================================================================
+     * GET USER ORDERS
+     * ========================================================================
+     */
+    public static getUserOrders = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const { userId } = req.params;
+            const { status, page = 1, limit = 10 } = req.query;
 
-      // ===== VALIDATE INPUT =====
-      if (!userId) {
-        return next(new ApiError(400, "User ID is required"));
-      }
+            interface QueryFilter {
+                userId: string;
+                orderStatus?: string;
+            }
 
-      const pageNum = Math.max(1, parseInt(page as string) || 1);
-      const limitNum = Math.min(50, parseInt(limit as string) || 10);
-      const skipCount = (pageNum - 1) * limitNum;
+            const query: QueryFilter = { userId: userId as string };
+            
+            if (status && typeof status === 'string') {
+                query.orderStatus = status;
+            }
 
-      // ===== BUILD QUERY FILTER =====
-      const filter: any = { userId };
+            const orders = await orderModel.find(query)
+                .sort({ orderDate: -1 })
+                .limit(Number(limit))
+                .skip((Number(page) - 1) * Number(limit))
+                .populate('medicineStoreId', 'storeName storeAddress')
+                .select('-orderItems.itemId');
 
-      if (status && Object.values(OrderStatus).includes(status as OrderStatus)) {
-        filter.status = status;
-      }
+            const total = await orderModel.countDocuments(query);
 
-      // ===== VERIFY USER EXISTS =====
-      const userExists = await UserModel.findById(userId);
-      if (!userExists) {
-        return next(new ApiError(404, "User not found"));
-      }
-
-      // ===== FETCH ORDERS WITH PAGINATION =====
-      const [orders, totalCount] = await Promise.all([
-        Order.find(filter)
-          .sort(sortBy as string)
-          .skip(skipCount)
-          .limit(limitNum)
-          .lean(),
-        Order.countDocuments(filter),
-      ]);
-
-      const totalPages = Math.ceil(totalCount / limitNum);
-
-      // ===== RETURN RESPONSE =====
-      return handleResponse(
-        req,
-        res,
-        200,
-        "Orders retrieved successfully",
-        {
-          orders,
-          pagination: {
-            currentPage: pageNum,
-            totalPages,
-            totalOrders: totalCount,
-            ordersPerPage: limitNum,
-            hasNextPage: pageNum < totalPages,
-            hasPreviousPage: pageNum > 1,
-          },
+            return handleResponse(req, res, 200, "Orders retrieved", {
+                orders,
+                pagination: {
+                    total,
+                    page: Number(page),
+                    limit: Number(limit),
+                    pages: Math.ceil(total / Number(limit))
+                }
+            });
         }
-      );
-    }
-  );
+    );
 
-  /**
-   * Get order analytics and statistics
-   * @route   GET /api/v2/orders/analytics/dashboard
-   * @desc    Provides order statistics for dashboard/analytics
-   * @access  Private (Admin)
-   */
-  public static getOrderAnalytics = catchAsyncErrors(
-    async (req: Request, res: Response, next: NextFunction) => {
-      const { userId } = req.body;
-      const { dateRange = 30 } = req.query;
+    /**
+     * ========================================================================
+     * GET STORE ORDERS
+     * ========================================================================
+     */
+    public static getStoreOrders = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const { medicineStoreId } = req.params;
+            const { status, page = 1, limit = 10 } = req.query;
 
-      // ===== VALIDATE INPUT =====
-      if (!userId) {
-        return next(new ApiError(400, "User ID is required"));
-      }
+            interface QueryFilter {
+                medicineStoreId: string;
+                orderStatus?: string;
+            }
 
-      // ===== VERIFY USER IS ADMIN =====
-      const user = await UserModel.findById(userId);
-      if (!user || user.role !== RoleIndex.ADMIN) {
-        return next(new ApiError(403, "Only admins can access analytics"));
-      }
+            const query: QueryFilter = { medicineStoreId: medicineStoreId as string };
+            
+            if (status && typeof status === 'string') {
+                query.orderStatus = status;
+            }
 
-      // ===== CALCULATE DATE RANGE =====
-      const now = new Date();
-      const startDate = new Date(now);
-      startDate.setDate(startDate.getDate() - parseInt(dateRange as string));
+            const orders = await orderModel.find(query)
+                .sort({ orderDate: -1 })
+                .limit(Number(limit))
+                .skip((Number(page) - 1) * Number(limit))
+                .populate('userId', 'name phone')
+                .select('-orderItems.itemId');
 
-      // ===== FETCH ANALYTICS DATA =====
-      const [totalOrders, totalRevenue, ordersByStatus, ordersByDate] = await Promise.all([
-        Order.countDocuments({ createdAt: { $gte: startDate } }),
-        Order.aggregate([
-          { $match: { createdAt: { $gte: startDate } } },
-          { $group: { _id: null, totalRevenue: { $sum: "$totalAmount" } } },
-        ]),
-        Order.aggregate([
-          { $match: { createdAt: { $gte: startDate } } },
-          { $group: { _id: "$status", count: { $sum: 1 } } },
-        ]),
-        Order.aggregate([
-          { $match: { createdAt: { $gte: startDate } } },
-          {
-            $group: {
-              _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-              count: { $sum: 1 },
-              revenue: { $sum: "$totalAmount" },
-            },
-          },
-          { $sort: { _id: 1 } },
-        ]),
-      ]);
+            const total = await orderModel.countDocuments(query);
 
-      // ===== FORMAT RESPONSE =====
-      return handleResponse(
-        req,
-        res,
-        200,
-        "Order analytics retrieved successfully",
-        {
-          dateRange: `Last ${dateRange} days`,
-          totalOrders,
-          totalRevenue: totalRevenue[0]?.totalRevenue || 0,
-          ordersByStatus: Object.fromEntries(
-            ordersByStatus.map((stat) => [stat._id, stat.count])
-          ),
-          ordersByDate,
+            return handleResponse(req, res, 200, "Store orders retrieved", {
+                orders,
+                pagination: {
+                    total,
+                    page: Number(page),
+                    limit: Number(limit),
+                    pages: Math.ceil(total / Number(limit))
+                }
+            });
         }
-      );
-    }
-  );
+    );
+
+    public static returnOrder = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const { orderId } = req.params;
+            if (!req.user) {
+                return next(new ApiError(401, "Unauthorized"));
+            }
+            const { _id: userId } = req.user;
+            const { returnReason } = req.body;
+
+            if (!orderId) {
+                return next(new ApiError(400, "orderId is required"));
+            }
+
+            if (!returnReason) {
+                return next(new ApiError(400, "returnReason is required"));
+            }
+
+            // Validate return reason enum
+            const returnReasonValidation = validateEnum(
+                returnReason,
+                ReturnReason,
+                'returnReason'
+            );
+            
+            if (!returnReasonValidation.isValid) {
+                return next(new ApiError(400, returnReasonValidation.message!));
+            }
+
+            const order = await orderModel.findOne({ orderId });
+            if (!order) {
+                return next(new ApiError(404, "Order not found"));
+            }
+
+            if (order.userId.toString() !== userId) {
+                return next(new ApiError(403, "You are not authorized to return this order"));
+            }
+
+            if (order.orderStatus !== OrderStatus.DELIVERED) {
+                return next(new ApiError(400, "Only delivered orders can be returned"));
+            }
+
+            if (!order.isReturnable) {
+                return next(new ApiError(400, "This order is not eligible for return"));
+            }
+
+            order.orderStatus = OrderStatus.RETURNED;
+            order.returnReason = returnReason;
+            order.returnDate = new Date();
+            order.isReturnable = false;
+
+            await order.save();
+
+            // Send notification
+            await notificationService.sendToUser({
+                userId: order.userId.toString(),
+                title: "Order Returned",
+                body: `Your order #${orderId} has been marked as returned. Our team will contact you shortly.`,
+                data: {
+                    orderId,
+                    type: "order_returned",
+                    screen: "OrderDetails"
+                }
+            }).catch(err => console.error("Notification error:", err));
+
+            return handleResponse(req, res, 200, "Order return initiated", order);
+        }
+    );
+
 }
+
+export default OrderService;

@@ -25,6 +25,14 @@ declare global {
   }
 }
 
+// JWT Payload type
+interface JWTPayload {
+  _id: string;
+  role: string;
+  email: string;
+  medicineStoreId?: string;
+}
+
 /**
  * Extract user from JWT token or headers (Gateway mode)
  */
@@ -53,7 +61,7 @@ const getUserInfo = (req: Request) => {
       return null;
     }
 
-    const decoded = jwt.verify(token, process.env.USER_SECRET_KEY as string) as any;
+    const decoded = jwt.verify(token, process.env.USER_SECRET_KEY as string) as JWTPayload;
     return {
       _id: decoded._id,
       role: decoded.role,
@@ -93,15 +101,11 @@ export const adminMiddleware = (
   next: NextFunction
 ) => {
   try {
-    console.log("----------------------------------------------------------------------")
-    console.log("Headers: ", req.headers);
-    console.log("user: ", req.user);
     const user = getUserInfo(req);
     if (!user) {
       return next(new ApiError(401, 'Unauthorized: Please login first'));
     }
-    // Case-insensitive role comparison - handle both 'admin' and 'ADMIN'
-    if (user.role.toUpperCase() !== 'ADMIN') {
+    if (user.role !== 'ADMIN') {
       return next(new ApiError(403, 'Forbidden: Admin access required'));
     }
     req.user = user;

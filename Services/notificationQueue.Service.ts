@@ -55,7 +55,7 @@ class NotificationQueue {
       console.log(`📥 Queued notification: ${queuedNotification.id}`);
       
       return queuedNotification.id;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Failed to enqueue notification:', error);
       throw error;
     }

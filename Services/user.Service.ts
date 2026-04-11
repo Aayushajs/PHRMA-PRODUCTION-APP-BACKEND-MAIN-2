@@ -8,6 +8,8 @@ import { handleResponse } from "../Utils/handleResponse";
 import { redis } from "../config/redis";
 import { generateOtp } from "../Utils/OtpGenerator";
 import { mailClient } from "../Utils/mailClient";
+import { Iuser, DeliveryAddress } from "@databases/Entities/user.Interface";
+import mongoose from "mongoose";
 
 export default class UserService {
     public static login = catchAsyncErrors(
@@ -144,7 +146,7 @@ export default class UserService {
                     alternated: result.data?.alternated,
                     expiresIn: '3 minutes'
                 });
-            } catch (emailError: any) {
+            } catch (emailError: unknown) {
                 await redis.del(`otp:${Existeduser._id}`);
                 return next(new ApiError(500, "Failed to send OTP. Please try again."));
             }
@@ -245,6 +247,238 @@ export default class UserService {
             }
 
             return handleResponse(req, res, 200, "Password reset successfully");
+        }
+    );
+
+    // ================================================================
+    // DELIVERY ADDRESS MANAGEMENT
+    // ================================================================
+
+    /**
+     * Add a new delivery address
+     */
+    public static addDeliveryAddress = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            if (!req.user) {
+                return next(new ApiError(401, "Unauthorized"));
+            }
+            const { _id: userId } = req.user;
+            const {
+                recipientName,
+                recipientPhone,
+                street,
+                area,
+                city,
+                state,
+                pincode,
+                landmark,
+                location,
+                addressType,
+                isDefault
+            } = req.body;
+
+            // Validate required fields
+            const requiredFields = { recipientName, recipientPhone, street, city, state, pincode };
+            const missingFields = Object.entries(requiredFields)
+                .filter(([__, value]) => !value)
+                .map(([key]) => key);
+
+            if (missingFields.length > 0) {
+                return next(
+                    new ApiError(400, `Missing required fields: ${missingFields.join(", ")}`)
+                );
+            }
+
+            // Validate pincode format
+            if (!/^[0-9]{6}$/.test(pincode.toString())) {
+                return next(new ApiError(400, "Invalid pincode format"));
+            }
+
+            // Validate phone format
+            if (!/^[0-9]{10}$/.test(recipientPhone.replace(/\D/g, ""))) {
+                return next(new ApiError(400, "Invalid phone number format"));
+            }
+
+            const user = await UserModel.findById(userId);
+            if (!user) {
+                return next(new ApiError(404, "User not found"));
+            }
+
+            // If this is set as default, unset other default addresses
+            if (isDefault) {
+                user.deliveryAddresses = user.deliveryAddresses?.map((addr) => {
+                    const addrObj = (addr as mongoose.Document & DeliveryAddress).toObject();
+                    return {
+                        ...addrObj,
+                        isDefault: false
+                    };
+                }) || [];
+            }
+
+            // Create new address
+            const newAddress = {
+                recipientName,
+                recipientPhone,
+                street,
+                area,
+                city,
+                state,
+                pincode: Number(pincode),
+                landmark,
+                location,
+                addressType: addressType || "Home",
+                isDefault: isDefault || false,
+                createdAt: new Date()
+            };
+
+            user.deliveryAddresses = user.deliveryAddresses || [];
+            user.deliveryAddresses.push(newAddress as DeliveryAddress);
+            await user.save();
+
+            return handleResponse(req, res, 201, "Delivery address added successfully", {
+                address: user.deliveryAddresses[user.deliveryAddresses.length - 1]
+            });
+        }
+    );
+
+    /**
+     * Get all delivery addresses for a user
+     */
+    public static getDeliveryAddresses = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            if (!req.user) {
+                return next(new ApiError(401, "Unauthorized"));
+            }
+            const { _id: userId } = req.user;
+
+            const user = await UserModel.findById(userId).select("deliveryAddresses");
+            if (!user) {
+                return next(new ApiError(404, "User not found"));
+            }
+
+            return handleResponse(req, res, 200, "Delivery addresses retrieved", {
+                addresses: user.deliveryAddresses || []
+            });
+        }
+    );
+
+    /**
+     * Update a delivery address
+     */
+    public static updateDeliveryAddress = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            if (!req.user) {
+                return next(new ApiError(401, "Unauthorized"));
+            }
+            const { _id: userId } = req.user;
+            const { addressId } = req.params;
+            const updateData = req.body;
+
+            const user = await UserModel.findById(userId);
+            if (!user) {
+                return next(new ApiError(404, "User not found"));
+            }
+
+            const addressIndex = user.deliveryAddresses?.findIndex(
+                (addr) => (addr as mongoose.Document & DeliveryAddress)._id?.toString() === addressId
+            );
+
+            if (addressIndex === -1 || addressIndex === undefined) {
+                return next(new ApiError(404, "Address not found"));
+            }
+
+            // If setting as default, unset other defaults
+            if (updateData.isDefault === true) {
+                user.deliveryAddresses = user.deliveryAddresses?.map((addr, idx: number) => {
+                    if (idx !== addressIndex) {
+                        const addrObj = (addr as mongoose.Document & DeliveryAddress).toObject();
+                        return { ...addrObj, isDefault: false };
+                    }
+                    return addr;
+                }) || [];
+            }
+
+            // Update the address
+            const currentAddress = user.deliveryAddresses![addressIndex] as mongoose.Document & DeliveryAddress;
+            Object.assign(currentAddress, updateData);
+
+            await user.save();
+
+            return handleResponse(req, res, 200, "Delivery address updated successfully", {
+                address: user.deliveryAddresses![addressIndex]
+            });
+        }
+    );
+
+    /**
+     * Delete a delivery address
+     */
+    public static deleteDeliveryAddress = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            if (!req.user) {
+                return next(new ApiError(401, "Unauthorized"));
+            }
+            const { _id: userId } = req.user;
+            const { addressId } = req.params;
+
+            const user = await UserModel.findById(userId);
+            if (!user) {
+                return next(new ApiError(404, "User not found"));
+            }
+
+            const addressIndex = user.deliveryAddresses?.findIndex(
+                (addr) => (addr as mongoose.Document & DeliveryAddress)._id?.toString() === addressId
+            );
+
+            if (addressIndex === -1 || addressIndex === undefined) {
+                return next(new ApiError(404, "Address not found"));
+            }
+
+            user.deliveryAddresses?.splice(addressIndex, 1);
+            await user.save();
+
+            return handleResponse(req, res, 200, "Delivery address deleted successfully");
+        }
+    );
+
+    /**
+     * Set an address as default
+     */
+    public static setDefaultAddress = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            if (!req.user) {
+                return next(new ApiError(401, "Unauthorized"));
+            }
+            const { _id: userId } = req.user;
+            const { addressId } = req.params;
+
+            const user = await UserModel.findById(userId);
+            if (!user) {
+                return next(new ApiError(404, "User not found"));
+            }
+
+            const addressIndex = user.deliveryAddresses?.findIndex(
+                (addr) => (addr as mongoose.Document & DeliveryAddress)._id?.toString() === addressId
+            );
+
+            if (addressIndex === -1 || addressIndex === undefined) {
+                return next(new ApiError(404, "Address not found"));
+            }
+
+            // Unset all defaults and set new one
+            user.deliveryAddresses = user.deliveryAddresses?.map((addr, idx: number) => {
+                const addrObj = (addr as mongoose.Document & DeliveryAddress).toObject();
+                return {
+                    ...addrObj,
+                    isDefault: idx === addressIndex
+                };
+            }) || [];
+
+            await user.save();
+
+            return handleResponse(req, res, 200, "Default address updated successfully", {
+                address: user.deliveryAddresses![addressIndex]
+            });
         }
     );
 }

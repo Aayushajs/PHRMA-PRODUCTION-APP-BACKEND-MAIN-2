@@ -9,8 +9,7 @@
 
 import RoleIndex from "../../Utils/Roles.enum";
 import { Iuser } from "../Entities/user.Interface";
-import * as mongoose from "mongoose";
-import {Schema, Document } from "mongoose";
+import { Schema, Document } from "mongoose";
 
 export const userSchema = new Schema<Iuser & Document>(
   {
@@ -27,7 +26,6 @@ export const userSchema = new Schema<Iuser & Document>(
     password: {
       type: String,
       required: function (this: any) {
-        // ✔ password only required for local users
         return this.provider === "local";
       },
     },
@@ -82,6 +80,86 @@ export const userSchema = new Schema<Iuser & Document>(
         },
       },
     },
+    deliveryAddresses: {
+      type: [
+        {
+          recipientName: {
+            type: String,
+            required: [true, "Recipient name is required"],
+            trim: true,
+          },
+          recipientPhone: {
+            type: String,
+            required: [true, "Recipient phone is required"],
+            validate: {
+              validator: function (v: string) {
+                return /^[0-9]{10}$/.test(v.replace(/\D/g, ""));
+              },
+              message: "Invalid phone number format",
+            },
+          },
+          street: {
+            type: String,
+            required: [true, "Street address is required"],
+            trim: true,
+          },
+          area: {
+            type: String,
+            trim: true,
+          },
+          city: {
+            type: String,
+            required: [true, "City is required"],
+            trim: true,
+          },
+          state: {
+            type: String,
+            required: [true, "State is required"],
+            trim: true,
+          },
+          pincode: {
+            type: Number,
+            required: [true, "Pincode is required"],
+            validate: {
+              validator: function (v: number) {
+                return /^[0-9]{6}$/.test(v.toString());
+              },
+              message: "Invalid pincode format",
+            },
+          },
+          landmark: {
+            type: String,
+            trim: true,
+          },
+          location: {
+            longitude: {
+              type: Number,
+              min: -180,
+              max: 180,
+            },
+            latitude: {
+              type: Number,
+              min: -90,
+              max: 90,
+            },
+          },
+          addressType: {
+            type: String,
+            enum: ["Home", "Work", "Other"],
+            default: "Home",
+          },
+          isDefault: {
+            type: Boolean,
+            default: false,
+          },
+          createdAt: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+      ],
+      default: [],
+    },
     role: {
       type: String,
       required: true,
@@ -107,7 +185,7 @@ export const userSchema = new Schema<Iuser & Document>(
       ],
       default: [],
     },
-
+    
     // Pharmacy-related fields
     pharmacyInfo: {
       storeId: {
@@ -208,7 +286,7 @@ export const userSchema = new Schema<Iuser & Document>(
         type: String,
       },
     },
-
+    
     // ID Proofs and Documents
     identityDocuments: {
       aadharNumber: {
@@ -237,7 +315,7 @@ export const userSchema = new Schema<Iuser & Document>(
       passport: String,
       passportDocument: String,
     },
-
+    
     // Professional Documents
     professionalDocuments: {
       educationCertificates: {
@@ -253,7 +331,7 @@ export const userSchema = new Schema<Iuser & Document>(
         default: [],
       },
     },
-
+    
     // Emergency Contact
     emergencyContact: {
       name: {
@@ -280,7 +358,7 @@ export const userSchema = new Schema<Iuser & Document>(
         type: String,
       },
     },
-
+    
     // KYC and Verification
     kycStatus: {
       type: String,
@@ -302,7 +380,7 @@ export const userSchema = new Schema<Iuser & Document>(
       type: Boolean,
       default: false,
     },
-
+    
     createdAt: {
       type: Date,
       default: Date.now,

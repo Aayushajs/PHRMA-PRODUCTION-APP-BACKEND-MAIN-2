@@ -12,6 +12,8 @@ import {
   PaymentStatus,
   PaymentMethod,
   ShippingMethod,
+  ReturnReason,
+  CancellationReason,
 } from "../Entities/order.Interface";
 import { Schema, Document } from "mongoose";
 
@@ -337,6 +339,10 @@ export const orderSchema = new Schema<IOrder & Document>(
     // Cancellation Details
     cancellationReason: {
       type: String,
+      enum: {
+        values: Object.values(CancellationReason),
+        message: "{VALUE} is not a valid cancellation reason"
+      },
       trim: true,
       maxlength: [300, "Cancellation reason cannot exceed 300 characters"],
     },
@@ -355,6 +361,10 @@ export const orderSchema = new Schema<IOrder & Document>(
     },
     returnReason: {
       type: String,
+      enum: {
+        values: Object.values(ReturnReason),
+        message: "{VALUE} is not a valid return reason"
+      },
       trim: true,
       maxlength: [300, "Return reason cannot exceed 300 characters"],
     },
