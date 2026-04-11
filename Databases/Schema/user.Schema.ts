@@ -9,7 +9,8 @@
 
 import RoleIndex from "../../Utils/Roles.enum";
 import { Iuser } from "../Entities/user.Interface";
-import { Schema, Document } from "mongoose";
+import * as mongoose from "mongoose";
+import {Schema, Document } from "mongoose";
 
 export const userSchema = new Schema<Iuser & Document>(
   {
@@ -106,7 +107,7 @@ export const userSchema = new Schema<Iuser & Document>(
       ],
       default: [],
     },
-    
+
     // Pharmacy-related fields
     pharmacyInfo: {
       storeId: {
@@ -207,7 +208,7 @@ export const userSchema = new Schema<Iuser & Document>(
         type: String,
       },
     },
-    
+
     // ID Proofs and Documents
     identityDocuments: {
       aadharNumber: {
@@ -236,7 +237,7 @@ export const userSchema = new Schema<Iuser & Document>(
       passport: String,
       passportDocument: String,
     },
-    
+
     // Professional Documents
     professionalDocuments: {
       educationCertificates: {
@@ -252,7 +253,7 @@ export const userSchema = new Schema<Iuser & Document>(
         default: [],
       },
     },
-    
+
     // Emergency Contact
     emergencyContact: {
       name: {
@@ -279,7 +280,7 @@ export const userSchema = new Schema<Iuser & Document>(
         type: String,
       },
     },
-    
+
     // KYC and Verification
     kycStatus: {
       type: String,
@@ -301,7 +302,7 @@ export const userSchema = new Schema<Iuser & Document>(
       type: Boolean,
       default: false,
     },
-    
+
     createdAt: {
       type: Date,
       default: Date.now,

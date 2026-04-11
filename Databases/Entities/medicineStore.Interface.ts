@@ -24,7 +24,13 @@ export enum VerificationStatus {
 export interface IMedicineStore {
   _id?: mongoose.Types.ObjectId;
   storeName: string;
+  isStoreOpen?: boolean;
   storeType: StoreType;
+  storeReviews?: {
+    userId: mongoose.Types.ObjectId;
+    rating: number;
+    comment?: string;
+  }[];
   GSTNumber: string;
   pharmacyLicence: string;
   drugLicenceNumber?: string;
@@ -33,11 +39,11 @@ export interface IMedicineStore {
     area?: string;
     city: string;
     state: string;
-    pincode: number;
+    pincode: string;
     landmark?: string;
     location?: {
-      longitude: number;
-      latitude: number;
+      type: string;
+      coordinates: [number, number]; // [longitude, latitude]
     };
   };
   contactDetails: {
@@ -64,10 +70,11 @@ export interface IMedicineStore {
   acceptedPaymentMethods?: string[];
   minimumOrderAmount?: number;
   deliveryAvailable?: boolean;
-  deliveryRadius?: number; 
+  deliveryRadius?: number;
   deliveryCharges?: number;
   freeDeliveryAbove?: number;
-  
+  fastDeliveryAvailable?: boolean;
+
   // Verification and status
   verificationStatus: VerificationStatus;
   isVerified: boolean;
@@ -76,11 +83,11 @@ export interface IMedicineStore {
   verifiedBy?: mongoose.Types.ObjectId; // Admin who verified
   verifiedAt?: Date;
   adminRemarks?: string;
-  
+
   // Government verification flags
   gstVerified: boolean;
   pharmacistVerified: boolean;
-  
+
   // Documents
   documents?: {
     drugLicense?: string;
@@ -88,14 +95,14 @@ export interface IMedicineStore {
     storePhoto?: string;
     kycDoc?: string;
   };
-  
+
   // License expiry
   licenseExpiry?: Date
-  
+
   // Ratings and reviews
   averageRating?: number;
   totalReviews?: number;
-  
+
   // Business details
   establishedYear?: number;
   bankDetails?: {
@@ -105,11 +112,11 @@ export interface IMedicineStore {
     accountHolderName?: string;
     accountType?: "Savings" | "Current";
   };
-  
+
   // Inventory and orders
   totalProducts?: number;
   totalOrders?: number;
-  
+
   // Timestamps
   createdAt?: Date;
   updatedAt?: Date;

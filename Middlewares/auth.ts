@@ -93,11 +93,15 @@ export const adminMiddleware = (
   next: NextFunction
 ) => {
   try {
+    console.log("----------------------------------------------------------------------")
+    console.log("Headers: ", req.headers);
+    console.log("user: ", req.user);
     const user = getUserInfo(req);
     if (!user) {
       return next(new ApiError(401, 'Unauthorized: Please login first'));
     }
-    if (user.role !== 'admin') {
+    // Case-insensitive role comparison - handle both 'admin' and 'ADMIN'
+    if (user.role.toUpperCase() !== 'ADMIN') {
       return next(new ApiError(403, 'Forbidden: Admin access required'));
     }
     req.user = user;

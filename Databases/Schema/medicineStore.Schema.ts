@@ -18,11 +18,25 @@ export const medicineStoreSchema = new Schema<IMedicineStore & Document>(
       minlength: [3, "Store name must be at least 3 characters long"],
       maxlength: [100, "Store name cannot exceed 100 characters"],
     },
+    isStoreOpen: {
+      type: Boolean,
+      default: true,
+    },
     storeType: {
       type: String,
       enum: Object.values(StoreType),
       required: [true, "Store type is required"],
       default: StoreType.RETAIL,
+    },
+    storeReviews: {
+      type: [
+        {
+          userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+          rating: { type: Number, min: 1, max: 5, required: true },
+          comment: { type: String, trim: true },
+        },
+      ],
+      default: [],
     },
     GSTNumber: {
       type: String,
@@ -85,17 +99,17 @@ export const medicineStoreSchema = new Schema<IMedicineStore & Document>(
         trim: true,
       },
       location: {
-        longitude: {
-          type: Number,
-          min: -180,
-          max: 180,
+        type: {
+          type: String,
+          enum: ["Point"],
+          default: "Point",
+          // required: true
         },
-        latitude: {
-          type: Number,
-          min: -90,
-          max: 90,
-        },
-      },
+        coordinates: {
+          type: [Number], // [longitude, latitude]
+          // required: true
+        }
+      }
     },
     contactDetails: {
       phone: {
@@ -288,6 +302,10 @@ export const medicineStoreSchema = new Schema<IMedicineStore & Document>(
       min: 0,
       max: 5,
       default: 0,
+    },
+    fastDeliveryAvailable: {
+      type: Boolean,
+      default: false,
     },
     totalReviews: {
       type: Number,

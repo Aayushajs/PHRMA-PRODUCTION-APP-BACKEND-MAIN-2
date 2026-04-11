@@ -276,8 +276,7 @@ export const orderSchema = new Schema<IOrder & Document>(
     },
     trackingNumber: {
       type: String,
-      trim: true,
-      sparse: true,
+      trim: true
     },
 
     // Delivery Timeline
@@ -498,8 +497,7 @@ export const orderSchema = new Schema<IOrder & Document>(
     // Soft Delete Flag
     isDeleted: {
       type: Boolean,
-      default: false,
-      index: true,
+      default: false
     },
   },
   {

@@ -55,6 +55,24 @@ export const itemSchema = new Schema<Iitem & Document>(
             type: [String],
             default: [],
         },
+        imageProcessingStatus: {
+            type: String,
+            enum: ["pending", "processing", "completed", "failed", "not_required"],
+            default: "not_required",
+        },
+        imageProcessingJobId: {
+            type: String,
+        },
+        imageProcessingError: {
+            type: String,
+        },
+        imageProcessingImageCount: {
+            type: Number,
+            default: 0,
+        },
+        imageProcessingUpdatedAt: {
+            type: Date,
+        },
         itemCompany: {
             type: String,
             trim: true,

@@ -4,6 +4,9 @@ import { initializeSocket } from './config/socket.js';
 import { startKeepAliveCron } from './cronjob/keepAlive.js';
 import { startNotificationWorker } from './cronjob/notificationWorker.js';
 import { scheduleLicenseExpiryCron } from './cronjob/licenseExpiry.Job.js';
+import dns from "node:dns";
+
+dns.setServers(["8.8.8.8", "1.1.1.1"]);
 
 const PORT = parseInt(process.env.PORT || '5002', 10);
 

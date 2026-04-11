@@ -35,6 +35,14 @@ itemsRouter.post(
     ItemServices.createPremiumItem
 );
 
+// Get item by id for polling image processing status
+itemsRouter.get(
+    "/:itemId",
+    authenticatedUserMiddleware,
+    storeContextMiddleware,
+    ItemServices.getItemById
+);
+
 // Update existing item (requires authentication + store context)
 itemsRouter.put(
     "/update/:itemId", 

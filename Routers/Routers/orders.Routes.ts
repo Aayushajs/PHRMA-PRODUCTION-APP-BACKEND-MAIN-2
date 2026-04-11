@@ -6,158 +6,54 @@
 */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { sendNotificationToUser } from '../../Utils/notificationClient';
-import { catchAsyncErrors } from '../../Utils/catchAsyncErrors';
-import { ApiError } from '../../Utils/ApiError';
-import { handleResponse } from '../../Utils/handleResponse';
+import OrderService from '../../Services/order.Service';
 
 const ordersRouter = Router();
 
 // ============================================================================
-// ORDER ENDPOINTS WITH NOTIFICATIONS
+// ORDER ENDPOINTS - ALL LOGIC DELEGATED TO ORDER SERVICE
 // ============================================================================
 
 /**
- * @route   POST /api/v2/orders
- * @desc    Create a new order and notify the user
- * @access  Private (add auth middleware in production)
+ * @route   GET /api/v2/orders/analytics/dashboard
+ * @desc    Get order analytics and statistics for dashboard (Admin only)
+ * @access  Private (Admin)
  */
-ordersRouter.post('/', catchAsyncErrors(async (req: Request, res: Response, next: NextFunction) => {
-  const { userId, items, totalAmount, deliveryAddress } = req.body;
+ordersRouter.get('/analytics/dashboard', OrderService.getOrderAnalytics);
 
-  // Validation
-  if (!userId || !items || !totalAmount) {
-    throw new ApiError(400, 'Missing required fields: userId, items, totalAmount');
-  }
-
-    // TODO: Save order to database
-    const orderId = `ORD${Date.now()}`;
-    const order = {
-      id: orderId,
-      userId,
-      items,
-      totalAmount,
-      deliveryAddress,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-    };
-
-    console.log('📦 Order created:', orderId);
-
-    // Send notification to user (non-blocking)
-    sendNotificationToUser(
-      userId,
-      '🎉 Order Confirmed!',
-      `Your order #${orderId} has been placed successfully. Total: $${totalAmount}`,
-      {
-        orderId,
-        type: 'order_confirmation',
-        screen: 'OrderDetails',
-        amount: totalAmount.toString(),
-      }
-    ).then(result => {
-      if (result.success) {
-        console.log('Order notification sent successfully');
-      } else if (result.queued) {
-        console.log(' Order notification queued for retry');
-      } else {
-        console.error(' Failed to send order notification:', result.error);
-      }
-    }).catch(err => {
-      console.error('Notification error:', err);
-    });
-
-  return handleResponse(req, res, 201, 'Order created successfully', { order });
-}));
+/**
+ * @route   GET /api/v2/orders/:orderId
+ * @desc    Retrieve complete order details with authorization check
+ * @access  Private
+ */
+ordersRouter.get('/:orderId', OrderService.getOrderDetails);
 
 /**
  * @route   PATCH /api/v2/orders/:orderId/status
- * @desc    Update order status and notify the user
- * @access  Private
+ * @desc    Update order status with validation and user notification
+ * @access  Private (Admin/Store)
  */
-ordersRouter.patch('/:orderId/status', catchAsyncErrors(async (req: Request, res: Response, next: NextFunction) => {
-  const { orderId } = req.params;
-  const { status, userId } = req.body;
-
-  if (!status || !userId) {
-    throw new ApiError(400, 'Missing required fields: status, userId');
-  }
-
-    // TODO: Update order status in database
-    console.log(`📦 Order ${orderId} status updated to: ${status}`);
-
-    // Send appropriate notification based on status
-    let notificationTitle = '';
-    let notificationBody = '';
-
-    switch (status) {
-      case 'processing':
-        notificationTitle = '⏳ Order Processing';
-        notificationBody = `Your order #${orderId} is being processed`;
-        break;
-      case 'shipped':
-        notificationTitle = '🚚 Order Shipped';
-        notificationBody = `Your order #${orderId} has been shipped and is on its way!`;
-        break;
-      case 'delivered':
-        notificationTitle = '✅ Order Delivered';
-        notificationBody = `Your order #${orderId} has been delivered. Enjoy!`;
-        break;
-      case 'cancelled':
-        notificationTitle = '❌ Order Cancelled';
-        notificationBody = `Your order #${orderId} has been cancelled`;
-        break;
-      default:
-        notificationTitle = '📦 Order Update';
-        notificationBody = `Your order #${orderId} status: ${status}`;
-    }
-
-    // Send notification
-    sendNotificationToUser(
-      userId,
-      notificationTitle,
-      notificationBody,
-      {
-        orderId,
-        status,
-        type: 'order_status_update',
-        screen: 'OrderDetails',
-      }
-    ).catch(err => console.error('❌ Status notification error:', err));
-
-  return handleResponse(req, res, 200, 'Order status updated successfully', { orderId, status });
-}));
+ordersRouter.patch('/:orderId/status', OrderService.updateOrderStatus);
 
 /**
  * @route   POST /api/v2/orders/:orderId/cancel
- * @desc    Cancel order and notify the user
+ * @desc    Cancel order, restore items, process refund, and notify user
+ * @access  Private (Customer/Admin)
+ */
+ordersRouter.post('/:orderId/cancel', OrderService.cancelOrder);
+
+/**
+ * @route   POST /api/v2/orders
+ * @desc    Create a new order with full validation, item tracking, and notifications
  * @access  Private
  */
-ordersRouter.post('/:orderId/cancel', catchAsyncErrors(async (req: Request, res: Response, next: NextFunction) => {
-  const { orderId } = req.params;
-  const { userId, reason } = req.body;
+ordersRouter.post('/', OrderService.createOrder);
 
-  if (!userId) {
-    throw new ApiError(400, 'Missing required field: userId');
-  }
-
-    // TODO: Cancel order in database
-    console.log(`❌ Order ${orderId} cancelled. Reason: ${reason}`);
-
-    // Send notification
-    await sendNotificationToUser(
-      userId,
-      '❌ Order Cancelled',
-      `Your order #${orderId} has been cancelled. ${reason ? `Reason: ${reason}` : ''}`,
-      {
-        orderId,
-        type: 'order_cancelled',
-        reason: reason || 'User requested',
-        screen: 'OrderDetails',
-      }
-    );
-
-  return handleResponse(req, res, 200, 'Order cancelled successfully', { orderId, status: 'cancelled' });
-}));
+/**
+ * @route   GET /api/v2/orders
+ * @desc    Retrieve paginated user orders with filtering and sorting
+ * @access  Private
+ */
+ordersRouter.get('/', OrderService.getUserOrders);
 
 export default ordersRouter;

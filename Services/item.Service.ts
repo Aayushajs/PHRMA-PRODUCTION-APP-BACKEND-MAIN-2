@@ -14,10 +14,10 @@ import { redis } from "../config/redis";
 import ItemModel from "../Databases/Models/item.Model";
 import ChildUnitModel from "../Databases/Models/childUnit.model";
 import ParentUnitModel from "../Databases/Models/parentUnit.model";
-import { uploadToCloudinary } from "../Utils/cloudinaryUpload";
 import { v2 as cloudinary } from "cloudinary";
 import { MRPVerificationService } from './mrpVerification.Service';
 import { gstModel } from '../Databases/Models/gst.Model';
+import { enqueueImageProcessingJob } from "../jobs/image.job.js";
 
 export default class ItemServices {
 
@@ -123,23 +123,24 @@ export default class ItemServices {
                 finalParentUnit = parentUnitId._id;
             }
 
-            // Handle image uploads
-            let imageUrls: string[] = [];
-
-            if (req.files && Array.isArray(req.files)) {
-                try {
-                    const uploadResults = await Promise.all(
-                        (req.files as Express.Multer.File[]).map(file =>
-                            uploadToCloudinary(file.buffer, "Epharma/items")
-                        )
-                    );
-                    imageUrls = uploadResults.map(r => r.secure_url);
-                } catch (error) {
-                    console.error("Cloudinary upload error:", error);
-                    return next(new ApiError(500, "Failed to upload item images"));
-                }
+            const uploadedFiles = Array.isArray(req.files) ? (req.files as Express.Multer.File[]) : [];
+            console.log("Uploaded itemImages count:", uploadedFiles.length);
+            if (uploadedFiles.length > 0) {
+                console.log(
+                    "Uploaded itemImages details:",
+                    uploadedFiles.map((file) => ({
+                        originalname: file.originalname,
+                        mimetype: file.mimetype,
+                        size: file.size,
+                    }))
+                );
             }
-            else if (req.body.itemImages) {
+            const shouldQueueImageProcessing = uploadedFiles.length > 0;
+
+            // Handle legacy direct image URLs only when no file upload is present.
+            // File uploads are read from req.files by multer.array("itemImages").
+            let imageUrls: string[] = [];
+            if (!shouldQueueImageProcessing && req.body.itemImages) {
                 if (Array.isArray(req.body.itemImages)) {
                     imageUrls = req.body.itemImages;
                 } else if (typeof req.body.itemImages === "string") {
@@ -216,6 +217,7 @@ export default class ItemServices {
                 medicineStoreId: medicineStoreId,  // Track store ownership
                 createdBy: req.user?._id,
                 createdAt: Date.now(),
+                imageProcessingStatus: shouldQueueImageProcessing ? "pending" : "not_required",
                 mrpVerification: mrpVerificationData,
                 otherInformation: processedOtherInfo
             };
@@ -223,6 +225,39 @@ export default class ItemServices {
             console.log("New Item Data:", newItemData);
 
             const newItem: any = await ItemModel.create(newItemData);
+
+            if (shouldQueueImageProcessing) {
+                try {
+                    const queueResult = await enqueueImageProcessingJob({
+                        itemId: String(newItem._id),
+                        itemName,
+                        medicineStoreId: String(medicineStoreId),
+                        files: uploadedFiles,
+                        metadata: {
+                            itemCategory: String(itemCategory),
+                            createdBy: String(req.user?._id ?? ""),
+                            source: "createItem",
+                        },
+                    });
+
+                    await ItemModel.findByIdAndUpdate(newItem._id, {
+                        imageProcessingStatus: "pending",
+                        imageProcessingJobId: queueResult.jobId,
+                        imageProcessingImageCount: queueResult.imageCount,
+                        imageProcessingUpdatedAt: new Date(),
+                        updatedAt: new Date(),
+                    });
+                } catch (error) {
+                    console.error("Failed to enqueue item image processing job:", error);
+                    await ItemModel.findByIdAndUpdate(newItem._id, {
+                        imageProcessingStatus: "failed",
+                        imageProcessingError: "Failed to enqueue image processing job",
+                        imageProcessingUpdatedAt: new Date(),
+                        updatedAt: new Date(),
+                    });
+                }
+            }
+
             await redis.del("deals:of-the-day");
 
             // Clear relevant cache
@@ -230,6 +265,11 @@ export default class ItemServices {
 
             return handleResponse(req, res, 201, "Item created successfully", {
                 item: newItem,
+                imageUpload: {
+                    received: shouldQueueImageProcessing,
+                    receivedCount: uploadedFiles.length,
+                    status: shouldQueueImageProcessing ? "queued_for_background_removal" : "not_required",
+                },
                 priceVerification: mrpVerificationData
             });
         }
@@ -335,23 +375,12 @@ export default class ItemServices {
                 finalParentUnit = parentUnitId._id;
             }
 
-            // Handle image uploads
-            let imageUrls: string[] = [];
+            const uploadedFiles = Array.isArray(req.files) ? (req.files as Express.Multer.File[]) : [];
+            const shouldQueueImageProcessing = uploadedFiles.length > 0;
 
-            if (req.files && Array.isArray(req.files)) {
-                try {
-                    const uploadResults = await Promise.all(
-                        (req.files as Express.Multer.File[]).map(file =>
-                            uploadToCloudinary(file.buffer, "Epharma/items")
-                        )
-                    );
-                    imageUrls = uploadResults.map(r => r.secure_url);
-                } catch (error) {
-                    console.error("Cloudinary upload error:", error);
-                    return next(new ApiError(500, "Failed to upload item images"));
-                }
-            }
-            else if (req.body.itemImages) {
+            // Handle legacy direct image URLs only when no file upload is present
+            let imageUrls: string[] = [];
+            if (!shouldQueueImageProcessing && req.body.itemImages) {
                 if (Array.isArray(req.body.itemImages)) {
                     imageUrls = req.body.itemImages;
                 } else if (typeof req.body.itemImages === "string") {
@@ -397,6 +426,7 @@ export default class ItemServices {
                 medicineStoreId: medicineStoreId,  // Track store ownership
                 createdBy: req.user?._id,
                 createdAt: Date.now(),
+                imageProcessingStatus: shouldQueueImageProcessing ? "pending" : "not_required",
                 otherInformation: processedOtherInfo
             };
 
@@ -404,10 +434,89 @@ export default class ItemServices {
 
             const newItem: any = await ItemModel.create(newItemData);
 
+            if (shouldQueueImageProcessing) {
+                try {
+                    const queueResult = await enqueueImageProcessingJob({
+                        itemId: String(newItem._id),
+                        itemName,
+                        medicineStoreId: String(medicineStoreId),
+                        files: uploadedFiles,
+                        metadata: {
+                            itemCategory: String(itemCategory),
+                            createdBy: String(req.user?._id ?? ""),
+                            source: "createPremiumItem",
+                        },
+                    });
+
+                    await ItemModel.findByIdAndUpdate(newItem._id, {
+                        imageProcessingStatus: "pending",
+                        imageProcessingJobId: queueResult.jobId,
+                        imageProcessingImageCount: queueResult.imageCount,
+                        imageProcessingUpdatedAt: new Date(),
+                        updatedAt: new Date(),
+                    });
+                } catch (error) {
+                    console.error("Failed to enqueue premium item image processing job:", error);
+                    await ItemModel.findByIdAndUpdate(newItem._id, {
+                        imageProcessingStatus: "failed",
+                        imageProcessingError: "Failed to enqueue image processing job",
+                        imageProcessingUpdatedAt: new Date(),
+                        updatedAt: new Date(),
+                    });
+                }
+            }
+
             // Clear relevant cache
             await redis.del(`items:store:${medicineStoreId}`);
 
-            return handleResponse(req, res, 201, "Premium item created successfully", newItem);
+            return handleResponse(req, res, 201, "Premium item created successfully", {
+                item: newItem,
+                imageUpload: {
+                    received: shouldQueueImageProcessing,
+                    receivedCount: uploadedFiles.length,
+                    status: shouldQueueImageProcessing ? "queued_for_background_removal" : "not_required",
+                },
+            });
+        }
+    );
+
+    /**
+     * Get a single item by ID for polling image processing status
+     */
+    public static getItemById = catchAsyncErrors(
+        async (
+            req: Request,
+            res: Response,
+            next: NextFunction
+        ) => {
+            const { itemId } = req.params;
+            const medicineStoreId = req.user?.medicineStoreId;
+
+            if (!medicineStoreId) {
+                return next(new ApiError(403, "No medicine store associated with your account"));
+            }
+
+            const item = await ItemModel.findById(itemId).lean();
+
+            if (!item) {
+                return next(new ApiError(404, "Item not found"));
+            }
+
+            if (item.medicineStoreId?.toString?.() !== medicineStoreId.toString()) {
+                return next(new ApiError(403, "You can only access items from your own store"));
+            }
+
+            return handleResponse(req, res, 200, "Item fetched successfully", {
+                item,
+                imageProcessing: {
+                    status: item.imageProcessingStatus ?? "not_required",
+                    jobId: item.imageProcessingJobId ?? null,
+                    imageCount: item.imageProcessingImageCount ?? 0,
+                    updatedAt: item.imageProcessingUpdatedAt ?? null,
+                    error: item.imageProcessingError ?? null,
+                    hasImages: Array.isArray(item.itemImages) && item.itemImages.length > 0,
+                },
+            });
         }
     );
 
@@ -453,22 +562,12 @@ export default class ItemServices {
                 return next(new ApiError(403, "You can only update items from your own store"));
             }
 
-            // Handle image uploads
+            const uploadedFiles = Array.isArray(req.files) ? (req.files as Express.Multer.File[]) : [];
+            const shouldQueueImageProcessing = uploadedFiles.length > 0;
+
+            // Handle image URLs only when no uploaded file is present
             let imageUrls: string[] = existingItem.itemImages || [];
-            if (req.files && Array.isArray(req.files) && req.files.length > 0) {
-                try {
-                    const uploadResults = await Promise.all(
-                        (req.files as Express.Multer.File[]).map(file =>
-                            uploadToCloudinary(file.buffer, "Epharma/items")
-                        )
-                    );
-                    imageUrls = uploadResults.map(r => r.secure_url);
-                } catch (error) {
-                    console.error("Cloudinary upload error:", error);
-                    return next(new ApiError(500, "Failed to upload item images"));
-                }
-            }
-            else if (req.body.itemImages) {
+            if (!shouldQueueImageProcessing && req.body.itemImages) {
                 if (Array.isArray(req.body.itemImages)) {
                     imageUrls = req.body.itemImages;
                 } else if (typeof req.body.itemImages === "string") {
@@ -497,6 +596,8 @@ export default class ItemServices {
                     ...updateData,
                     itemImages: imageUrls,
                     itemFinalPrice,
+                    imageProcessingStatus: shouldQueueImageProcessing ? "pending" : existingItem.imageProcessingStatus,
+                    imageProcessingError: shouldQueueImageProcessing ? null : existingItem.imageProcessingError,
                     updatedBy: req.user?._id,
                     updatedAt: new Date()
                 },
@@ -510,7 +611,48 @@ export default class ItemServices {
             // Clear cache
             await redis.del(`items:store:${updatedItem.medicineStoreId}`);
 
-            handleResponse(req, res, 200, "Item updated successfully", updatedItem);
+            if (shouldQueueImageProcessing) {
+                try {
+                    const queueResult = await enqueueImageProcessingJob({
+                        itemId: String(updatedItem._id),
+                        itemName: String(updateData.itemName ?? existingItem.itemName),
+                        medicineStoreId: String(medicineStoreId),
+                        files: uploadedFiles,
+                        metadata: {
+                            itemCategory: String(updateData.itemCategory ?? existingItem.itemCategory ?? ""),
+                            createdBy: String(req.user?._id ?? ""),
+                            source: "updateItem",
+                        },
+                    });
+
+                    await ItemModel.findByIdAndUpdate(updatedItem._id, {
+                        imageProcessingStatus: "pending",
+                        imageProcessingJobId: queueResult.jobId,
+                        imageProcessingImageCount: queueResult.imageCount,
+                        imageProcessingUpdatedAt: new Date(),
+                        updatedAt: new Date(),
+                    });
+                } catch (error) {
+                    console.error("Failed to enqueue updated item image processing job:", error);
+                    await ItemModel.findByIdAndUpdate(updatedItem._id, {
+                        imageProcessingStatus: "failed",
+                        imageProcessingError: "Failed to enqueue image processing job",
+                        imageProcessingUpdatedAt: new Date(),
+                        updatedAt: new Date(),
+                    });
+                }
+            }
+
+            const latestItem = await ItemModel.findById(updatedItem._id).lean();
+
+            handleResponse(req, res, 200, "Item updated successfully", {
+                item: latestItem ?? updatedItem,
+                imageUpload: {
+                    received: shouldQueueImageProcessing,
+                    receivedCount: uploadedFiles.length,
+                    status: shouldQueueImageProcessing ? "queued_for_background_removal" : "not_required",
+                },
+            });
         }
     );
 

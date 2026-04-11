@@ -22,6 +22,9 @@ import { DocumentUploadService } from "../Utils/documentUpload";
 import { GSTVerificationService } from "../Utils/gstVerification";
 import { LicenseOCRService } from "../Utils/licenseOcr";
 import { VerificationStatus } from "../Databases/Entities/medicineStore.Interface";
+import ItemModel from "../Databases/Models/item.Model";
+import { calculateDistance } from "../Utils/miscelleneousCalcs";
+import { Types } from "mongoose";
 
 export default class MedicineStoreService {
     /**
@@ -30,10 +33,46 @@ export default class MedicineStoreService {
      */
     public static storeRegistration = catchAsyncErrors(
         async (req: Request, res: Response, next: NextFunction) => {
-            const { userName, email, phone, storeName, storeType, GSTNumber, pharmacyLicence, address, city, state, pincode } = req.body;
+            const {
+                userName,
+                storeName,
+                storeType,
+                GSTNumber,
+                pharmacyLicence,
+                drugLicenceNumber,
+                address: {
+                    street = '',
+                    area = '',
+                    city = '',
+                    state = '',
+                    pincode = '',
+                    landmark = '',
+                    location: {
+                        type: locationType = 'Point',
+                        coordinates: locationCoordinates = []
+                    } = {}
+                } = {},
+                phone,
+                alternatePhone,
+                email,
+                whatsappNumber,
+                description
+            } = req.body;
 
-            // Step 1: Check required fields
-            const requiredFields = { userName, email, phone, storeName, storeType, GSTNumber, pharmacyLicence, address, city, state, pincode };
+            // Check required fields
+            const requiredFields = {
+                userName,
+                storeName,
+                storeType,
+                GSTNumber,
+                pharmacyLicence,
+                street,
+                city,
+                state,
+                pincode,
+                phone,
+                email
+            };
             const missingFields = Object.entries(requiredFields)
                 .filter(([__, value]) => !value)
                 .map(([key]) => key);
@@ -47,43 +86,84 @@ export default class MedicineStoreService {
                 )
             }
 
-            // Step 2: Validate email format
+            // Validate email format
             const emailValidation = validateEmail(email);
             if (!emailValidation.isValid) {
                 return next(new ApiError(400, emailValidation.message));
             }
 
-            // Step 3: Validate phone number
+            // Validate phone number
             const phoneValidation = validatePhoneNumber(phone);
             if (!phoneValidation.isValid) {
                 return next(new ApiError(400, phoneValidation.message));
             }
 
-            // Step 4: Validate GST Number format
+            // Validate alternate phone number (if provided)
+            if (alternatePhone) {
+                const altPhoneValidation = validatePhoneNumber(alternatePhone);
+                if (!altPhoneValidation.isValid) {
+                    return next(new ApiError(400, `Alternate phone: ${altPhoneValidation.message}`));
+                }
+            }
+
+            // Validate WhatsApp number (if provided)
+            if (whatsappNumber) {
+                const whatsappValidation = validatePhoneNumber(whatsappNumber);
+                if (!whatsappValidation.isValid) {
+                    return next(new ApiError(400, `WhatsApp number: ${whatsappValidation.message}`));
+                }
+            }
+
+            // Validate GST Number format
             const gstValidation = validateGSTFormat(GSTNumber);
             if (!gstValidation.isValid) {
                 return next(new ApiError(400, gstValidation.message));
             }
 
-            // Step 5: Validate Pharmacy License format
+            // Validate Pharmacy License format
             const licenseValidation = validatePharmacyLicenseFormat(pharmacyLicence, state);
             if (!licenseValidation.isValid) {
                 return next(new ApiError(400, licenseValidation.message));
             }
 
-            // Step 6: Validate pincode format
+            // Validate pincode format
             const pincodeFormatValidation = validatePincodeFormat(pincode);
             if (!pincodeFormatValidation.isValid) {
                 return next(new ApiError(400, pincodeFormatValidation.message));
             }
 
-            // Step 7: Verify pincode matches city and state
+            // Verify pincode matches city and state
             const pincodeMatchValidation = await validatePincodeMatch(pincode, city, state);
             if (!pincodeMatchValidation.isValid) {
                 return next(new ApiError(400, pincodeMatchValidation.message));
             }
 
-            // Step 8: Check if store with same GST or pharmacy license already exists
+            // Validate location coordinates (if provided)
+            if (locationCoordinates && locationCoordinates.length > 0) {
+                if (!Array.isArray(locationCoordinates) || locationCoordinates.length !== 2) {
+                    return next(new ApiError(400, "Coordinates must be an array with exactly 2 values: [longitude, latitude]"));
+                }
+                const [longitude, latitude] = locationCoordinates;
+
+                if (typeof longitude !== 'number' || typeof latitude !== 'number') {
+                    return next(new ApiError(400, "Longitude and latitude must be numbers"));
+                }
+
+                if (latitude < -90 || latitude > 90) {
+                    return next(new ApiError(400, "Latitude must be between -90 and 90 degrees"));
+                }
+
+                if (longitude < -180 || longitude > 180) {
+                    return next(new ApiError(400, "Longitude must be between -180 and 180 degrees"));
+                }
+            }
+
+            // Validate location type format
+            if (locationType && locationType !== 'Point') {
+                return next(new ApiError(400, "Location type must be 'Point'"));
+            }
+
+            // Check if store with same GST or pharmacy license already exists
             const existingStore = await MedicineStoreModel.findOne({
                 $or: [
                     { GSTNumber: GSTNumber.toUpperCase().trim() },
@@ -100,7 +180,7 @@ export default class MedicineStoreService {
                 }
             }
 
-            // Step 9: Check if email or phone already exists
+            // Check if email or phone already exists
             const existingContact = await MedicineStoreModel.findOne({
                 $or: [
                     { "contactDetails.email": email.toLowerCase().trim() },
@@ -112,21 +192,16 @@ export default class MedicineStoreService {
                 return next(new ApiError(409, "A store with this email or phone number is already registered"));
             }
 
-            // Step 10: Create or find user (store owner)
-            let ownerId: any;
-
             // Check if user already exists with BOTH email AND phone (same owner registering another store)
             let existingUser = await UserModel.findOne({
                 email: email.toLowerCase().trim(),
                 phone: phone.replace(/[\s\-()]/g, '')
             });
 
-            if (existingUser) {
-                // Same owner trying to register another store
-                ownerId = existingUser._id;
-            } else {
-                // Check if email or phone is already taken by someone else
-                const conflictingUser = await UserModel.findOne({
+            // Check if email or phone is already taken by someone else
+            let conflictingUser: any = null;
+            if (!existingUser) {
+                conflictingUser = await UserModel.findOne({
                     $or: [
                         { email: email.toLowerCase().trim() },
                         { phone: phone.replace(/[\s\-()]/g, '') }
@@ -141,47 +216,9 @@ export default class MedicineStoreService {
                         return next(new ApiError(409, "A user with this phone number already exists. Please use a different phone or provide the matching email."));
                     }
                 }
-
-                // Create new user (neither email nor phone exists)
-                // User will receive actual password after admin approval
-                const placeholderPassword = `pending_approval_${Date.now()}`;
-                const hashedPassword = await bcrypt.hash(placeholderPassword, 12);
-
-                const newUser = await UserModel.create({
-                    userName: userName,
-                    email: email.toLowerCase().trim(),
-                    phone: phone.replace(/[\s\-()]/g, ''),
-                    password: hashedPassword, // Placeholder - will be replaced upon approval
-                    role: RoleIndex.OWNER,
-                    dob: new Date(),
-                    pharmacyInfo: {
-                        designation: "Owner"
-                    }
-                });
-
-                ownerId = newUser._id;
-
-                console.log("👤 New user created. Password will be set upon approval.");
-                
-                // Send initial registration confirmation (without password)
-                try {
-                    const welcomeEmail = EmailTemplates.storeRegistrationPending({
-                        userName,
-                        storeName,
-                        GSTNumber,
-                        pharmacyLicence
-                    });
-                    await mailClient.sendNotificationEmail(
-                        email,
-                        "Store Registration Received",
-                        welcomeEmail.body
-                    );
-                } catch (error) {
-                    console.error("Registration confirmation email failed:", error);
-                }
             }
 
-            // Step 11: Verify GST with government API
+            // Verify GST with government API
             let gstVerified = false;
             try {
                 const gstVerification = await GSTVerificationService.verifyGST(GSTNumber);
@@ -194,7 +231,7 @@ export default class MedicineStoreService {
                 // Continue registration even if GST verification fails
             }
 
-            // Step 12: Process document uploads (if provided)
+            // Process document uploads (if provided)
             const documents: any = {};
             const files = (req as any).files || {};
 
@@ -234,7 +271,7 @@ export default class MedicineStoreService {
                 documents.kycDoc = uploadResult.url;
             }
 
-            // Step 13: Extract license expiry from OCR (if license document uploaded)
+            // Extract license expiry from OCR (if license document uploaded)
             let licenseExpiry: Date | undefined;
             let pharmacistVerified = false;
 
@@ -260,21 +297,89 @@ export default class MedicineStoreService {
                 }
             }
 
-            // Step 14: Create medicine store record
+            // ============================================================
+            // USER CREATION LOGIC - Only executes if all validations pass
+            // ============================================================
+            let ownerId: any;
+
+            if (existingUser) {
+                // Same owner trying to register another store
+                ownerId = existingUser._id;
+                console.log("👤 Existing user found. Linking to new store.");
+            } else {
+                // Create new user (neither email nor phone exists)
+                // User will receive actual password after admin approval
+                const placeholderPassword = `pending_approval_${Date.now()}`;
+                const hashedPassword = await bcrypt.hash(placeholderPassword, 12);
+
+                const newUser = await UserModel.create({
+                    userName: userName,
+                    email: email.toLowerCase().trim(),
+                    phone: phone.replace(/[\s\-()]/g, ''),
+                    password: hashedPassword, // Placeholder - will be replaced upon approval
+                    role: RoleIndex.OWNER,
+                    dob: new Date(),
+                    pharmacyInfo: {
+                        designation: "Owner"
+                    }
+                });
+
+                ownerId = newUser._id;
+                console.log("👤 New user created. Password will be set upon approval.");
+
+                // Send welcome email to new user only after successful user creation
+                try {
+                    const welcomeEmail = EmailTemplates.storeRegistrationPending({
+                        userName,
+                        storeName,
+                        GSTNumber,
+                        pharmacyLicence
+                    });
+                    await mailClient.sendNotificationEmail(
+                        email,
+                        "Store Registration Received",
+                        welcomeEmail.body
+                    );
+                } catch (error) {
+                    console.error("Registration confirmation email failed:", error);
+                }
+            }
+
+            // Create medicine store record with all schema-aligned fields
             const newStore = await MedicineStoreModel.create({
+                // Basic info
                 storeName,
                 storeType,
+                description: description || undefined,
+
+                // License/verification info
                 GSTNumber: GSTNumber.toUpperCase().trim(),
                 pharmacyLicence: pharmacyLicence.toUpperCase().trim(),
+                drugLicenceNumber: drugLicenceNumber ? drugLicenceNumber.toUpperCase().trim() : undefined,
+
+                // Complete address object aligned with schema
                 address: {
-                    street: address,
+                    street,
+                    area: area || undefined,
                     city,
                     state,
-                    pincode: String(pincode),
+                    pincode,
+                    landmark: landmark || undefined,
+                    // Location for geospatial queries
+                    location: locationCoordinates && locationCoordinates.length === 2
+                        ? {
+                            type: locationType || 'Point',
+                            coordinates: locationCoordinates
+                        }
+                        : undefined,
                 },
+
+                // Complete contact details aligned with schema
                 contactDetails: {
                     phone: phone.replace(/[\s\-()]/g, ''),
+                    alternatePhone: alternatePhone ? alternatePhone.replace(/[\s\-()]/g, '') : undefined,
                     email: email.toLowerCase().trim(),
+                    whatsappNumber: whatsappNumber ? whatsappNumber.replace(/[\s\-()]/g, '') : undefined,
                 },
                 ownerId: ownerId,
                 verificationStatus: VerificationStatus.PENDING,
@@ -286,7 +391,7 @@ export default class MedicineStoreService {
                 licenseExpiry,
             });
 
-            // Step 14.1: Establish bidirectional connection between User and Store
+            // Establish bidirectional connection between User and Store
             await UserModel.findByIdAndUpdate(
                 ownerId,
                 {
@@ -300,7 +405,7 @@ export default class MedicineStoreService {
                 { new: true }
             );
 
-            // Step 15: Send confirmation email
+            // Send confirmation email
             try {
                 const registrationEmail = EmailTemplates.storeRegistrationPending({
                     userName,
@@ -330,8 +435,281 @@ export default class MedicineStoreService {
                 gstVerified: newStore.gstVerified,
                 pharmacistVerified: newStore.pharmacistVerified,
                 licenseExpiry: newStore.licenseExpiry,
+                fastDeliveryAvailable: newStore.fastDeliveryAvailable,
                 message: "Your store registration has been submitted successfully. Our team will review and verify your documents shortly. You will be notified once approved.",
             });
         }
     );
+
+    // public static getStoreDetails = catchAsyncErrors(
+    //     async (req: Request, res: Response, next: NextFunction) => {
+    //         const storeId = req.params.storeId;
+    //         const store = await MedicineStoreModel.findById(storeId).populate("ownerId", "userName email phone");
+
+    //         if (!store) {
+    //             return next(new ApiError(404, "Store not found"));
+    //         }
+
+    //         return handleResponse(req, res, 200, "Store details retrieved successfully", {
+    //             storeId: store._id,
+    //             storeName: store.storeName,
+    //             storeType: store.storeType,
+    //             GSTNumber: store.GSTNumber,
+    //             pharmacyLicence: store.pharmacyLicence,
+    //             address: store.address,
+    //             contactDetails: store.contactDetails,
+    //             ownerId: store.ownerId
+    //         });
+    //     }
+    // );
+
+    public static getAllStores = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const { nearby, topRated, fastDelivery, openNow } = req.query;
+            const filter: any = {};
+
+            if (openNow === 'true') {
+                filter.isStoreOpen = true;
+            }
+
+            if (fastDelivery === 'true') {
+                filter.fastDeliveryAvailable = true;
+            }
+
+            if (topRated === 'true') {
+                filter.averageRating = { $gte: 4 };
+            }
+
+            if (nearby === 'true') {
+                const lat = parseFloat(req.query.latitude as string);
+                const lng = parseFloat(req.query.longitude as string);
+                const maxDistance = parseInt(req.query.maxDistance as string) || 5000;
+
+                if (isNaN(lat) || isNaN(lng)) {
+                    return next(new ApiError(400, "Invalid coordinates"));
+                }
+
+                filter["address.location"] = {
+                    $near: {
+                        $geometry: {
+                            type: "Point",
+                            coordinates: [lng, lat]
+                        },
+                        $maxDistance: maxDistance
+                    }
+                };
+            }
+
+            const stores = await MedicineStoreModel.find(filter).populate("ownerId", "userName email phone");
+            return handleResponse(req, res, 200, "All stores retrieved successfully", {
+                stores: stores.map(store => ({
+                    storeId: store._id,
+                    storeName: store.storeName,
+                    storeImage: store.storeImages?.[0] || null,
+                    storeType: store.storeType,
+                    address: store.address,
+                    contactDetails: store.contactDetails,
+                    isStoreOpen: store.isStoreOpen,
+                    storeReviews: store.storeReviews,
+                    ownerId: store.ownerId,
+                    description: store.description
+                }))
+            });
+        }
+    );
+
+    public static deleteStore = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const storeId = req.params.storeId;
+            const userId = req.user?._id;
+            console.log("user : ", userId)
+            if (!userId) {
+                return next(new ApiError(401, "Unauthorized: User not authenticated"));
+            }
+            const store = await MedicineStoreModel.findById(storeId);
+            if (!store) {
+                return next(new ApiError(404, "Store not found"));
+            }
+            await MedicineStoreModel.findByIdAndDelete(storeId);
+            return handleResponse(req, res, 200, "Store deleted successfully", null);
+        }
+    );
+
+    public static updateStore = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const storeId = req.params.storeId;
+            const updateData = req.body;
+            const store = await MedicineStoreModel.findById(storeId);
+            if (!store) {
+                return next(new ApiError(404, "Store not found"));
+            }
+            // Only allow certain fields to be updated
+            const allowedFields = ["storeName", "storeType", "address", "contactDetails", "isStoreOpen", "description", "fastDeliveryAvailable"];
+            const filteredUpdate: any = {};
+            for (const key of allowedFields) {
+                if (updateData[key]) {
+                    filteredUpdate[key] = updateData[key];
+                }
+            }
+            const updatedStore = await MedicineStoreModel.findByIdAndUpdate(storeId, filteredUpdate, { new: true });
+            return handleResponse(req, res, 200, "Store updated successfully", {
+                storeId: updatedStore?._id,
+                storeName: updatedStore?.storeName,
+                storeType: updatedStore?.storeType,
+                address: updatedStore?.address,
+                contactDetails: updatedStore?.contactDetails,
+                isStoreOpen: updatedStore?.isStoreOpen,
+                description: updatedStore?.description,
+                fastDeliveryAvailable: updatedStore?.fastDeliveryAvailable
+
+            });
+        }
+    );
+    public static getMedicineItemByStoreId = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const storeId = req.params.storeId;
+            const userRole = req.user?.role;
+
+            const store = await MedicineStoreModel.findById(storeId);
+            if (!store) {
+                return next(new ApiError(404, "Store not found"));
+            }
+
+            const items = await ItemModel.find({ medicineStoreId: storeId });
+
+            // Build response based on user role
+            const itemsResponse = items.map(item => {
+                const baseItem = {
+                    itemId: item._id,
+                    itemImage: item.itemImages?.[0] || null,
+                    itemName: item.itemName,
+                    price: item.itemFinalPrice,
+                    description: item.itemDescription,
+                    category: item.itemCategory,
+                    stockStatus: item.stockStatus,
+                    ratings: item.itemRatings,
+                };
+
+                // Add staff-only fields
+                if (userRole === 'STAFF' || userRole === 'OWNER' || userRole === 'ADMIN' || userRole === 'PHARMACIST') {
+                    return {
+                        ...baseItem,
+                        stockAvailability: item.stockAvailability,
+                    };
+                } else if (userRole === 'CUSTOMER') {
+                    return baseItem
+                }
+
+                return baseItem;
+            });
+
+            return handleResponse(req, res, 200, "Items retrieved successfully", {
+                storeId: store._id,
+                storeName: store.storeName,
+                items: itemsResponse,
+            });
+        }
+    );
+    public static giveStoreReviewAndRating = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const storeId = req.params.storeId;
+            const userIdString = req.user?._id;
+            const { rating, comment } = req.body;
+
+            // Validate userId
+            if (!userIdString) {
+                return next(new ApiError(401, "User must be authenticated to add a review"));
+            }
+
+            // Convert userId to ObjectId
+            const userId = new Types.ObjectId(userIdString);
+
+            // Validate rating - handle both string and number formats
+            const ratingNum = typeof rating === 'string' ? parseInt(rating) : rating;
+            if (isNaN(ratingNum) || ratingNum < 1 || ratingNum > 5) {
+                return next(new ApiError(400, "Rating is required and must be a number between 1 and 5"));
+            }
+
+            const store = await MedicineStoreModel.findById(storeId);
+            if (!store) {
+                return next(new ApiError(404, "Store not found"));
+            }
+
+            // Add the new review to the store's reviews array
+            if (!store.storeReviews) {
+                store.storeReviews = [];
+            }
+
+            store.storeReviews.push({ userId, rating: ratingNum, comment });
+
+            // Update totalReviews and recalculate averageRating
+            store.totalReviews = store.storeReviews.length;
+            const totalRating = store.storeReviews.reduce((sum: number, r: any) => sum + r.rating, 0);
+            store.averageRating = totalRating / store.storeReviews.length;
+
+            await store.save();
+
+            return handleResponse(req, res, 201, "Review added successfully", {
+                storeId: store._id,
+                reviewCount: store.totalReviews,
+                averageRating: store.averageRating.toFixed(2)
+            });
+        }
+    );
+
+    public static getReviewCountAndAverageRating = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const storeId = req.params.storeId;
+            const store = await MedicineStoreModel.findById(storeId);
+            if (!store) {
+                return next(new ApiError(404, "Store not found"));
+            }
+            const reviews = store.storeReviews || [];
+            const reviewCount = reviews.length;
+            const averageRating = reviewCount > 0 ? reviews.reduce((sum, review) => sum + review.rating, 0) / reviewCount : 0;
+            return handleResponse(req, res, 200, "Review count and average rating retrieved successfully", {
+                storeId: store._id,
+                reviewCount,
+                averageRating: averageRating.toFixed(2)
+            });
+        }
+    );
+
+    public static countAndgetDistancesToStores = catchAsyncErrors(
+        async (req: Request, res: Response, next: NextFunction) => {
+            const { longitude, latitude } = req.query;
+            if (!longitude || !latitude) {
+                return next(new ApiError(400, "Longitude and latitude are required"));
+            }
+            const stores = await MedicineStoreModel.find({
+                "address.location": { $exists: true }
+            });
+            const storesWithDistance = stores.map(store => {
+                if (store.address.location && store.address.location.coordinates) {
+                    const distance = calculateDistance(
+                        parseFloat(latitude as string),
+                        parseFloat(longitude as string),
+                        store.address.location.coordinates[1],
+                        store.address.location.coordinates[0]
+                    );
+                    return {
+                        storeId: store._id,
+                        storeName: store.storeName,
+                        distance: distance.toFixed(2) // Distance in kilometers
+                    };
+                }
+                return {
+                    storeId: store._id,
+                    storeName: store.storeName,
+                    distance: null // Location not available
+                };
+            }
+            );
+            return handleResponse(req, res, 200, "Distances to stores calculated successfully", {
+                stores: storesWithDistance
+            });
+        }
+    );
 }
+
+

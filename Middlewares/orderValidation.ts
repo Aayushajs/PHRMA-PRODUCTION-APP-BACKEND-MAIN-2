@@ -124,9 +124,9 @@ export const validateOrder = (order: IOrder): void => {
  * Call this in model initialization
  */
 export const applyOrderValidationHook = (): void => {
-  OrderModel.schema.pre("save", function (next) {
+  OrderModel.schema.pre("save", function (this: IOrder, next: Function) {
     try {
-      validateOrder(this as IOrder);
+      validateOrder(this);
       next();
     } catch (error: any) {
       next(new Error(error.message || "Order validation failed"));

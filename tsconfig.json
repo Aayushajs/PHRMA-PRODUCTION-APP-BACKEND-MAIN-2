@@ -42,6 +42,7 @@
     },
     "include": [
         "server.ts",
+        "image-worker.ts",
         "App.ts",
         "types/**/*",
         "Databases/**/*",
@@ -50,7 +51,10 @@
         "Services/**/*",
         "Utils/**/*",
         "config/**/*",
-        "cronjob/**/*"
+        "cronjob/**/*",
+        "jobs/**/*",
+        "queues/**/*",
+        "workers/**/*"
     ],
     "exclude": [
         "node_modules",

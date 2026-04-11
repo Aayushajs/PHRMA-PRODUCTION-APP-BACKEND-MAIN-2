@@ -22,6 +22,11 @@ export interface Iitem {
   itemExpiryDate: Date;
 
   itemImages?: string[];
+  imageProcessingStatus?: 'pending' | 'processing' | 'completed' | 'failed' | 'not_required';
+  imageProcessingJobId?: string;
+  imageProcessingError?: string | null;
+  imageProcessingImageCount?: number;
+  imageProcessingUpdatedAt?: Date;
   itemCompany?: string;
   itemBatchNumber?: string;
 
@@ -58,6 +63,10 @@ export interface Iitem {
   weight?: string;
 
   stockAisleIds?: Types.ObjectId[];
+  stockAvailability?: {
+    [aisleId: string]: number; // Maps aisle ID to available stock quantity
+  };
+  stockStatus?: 'in_stock' | 'out_of_stock' | 'limited_stock';
 
   isTrending?: boolean;
 

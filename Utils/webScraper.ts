@@ -37,8 +37,17 @@ async function scrapeWithRetry(
             });
 
             return parser(response.data);
-        } catch (error) {
-            console.error(`Scraping attempt ${attempt + 1} failed:`, error);
+        } catch (error: any) {
+            const status = error?.response?.status;
+            const message = error?.message || 'Unknown scraping error';
+
+            // 404 indicates the upstream route/page itself is missing; retrying is usually not useful.
+            if (status === 404) {
+                console.warn(`Scraping failed with 404 for ${url}`);
+                return null;
+            }
+
+            console.error(`Scraping attempt ${attempt + 1} failed for ${url}. status=${status ?? 'N/A'} message=${message}`);
             if (attempt < maxRetries) {
                 await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
             }
