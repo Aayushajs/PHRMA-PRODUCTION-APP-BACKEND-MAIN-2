@@ -22,7 +22,7 @@ import {
 const Order = model<IOrder>("Order", orderSchema);
 
 // Apply pre-save validation hook
-orderSchema.pre("save", function (next) {
+orderSchema.pre("save", function (this: any, next: any) {
   try {
     // Validate all order fields
     validateOrderItems(this);

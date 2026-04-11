@@ -9,7 +9,12 @@ import dotenv from "dotenv";
 
 dotenv.config({ path: "./config/.env" });
 
-const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+const sanitizeEnvValue = (value: string | undefined): string | undefined => {
+  if (!value) return undefined;
+  return value.trim().replace(/^['\"]|['\"]$/g, "");
+};
+
+const REDIS_URL = sanitizeEnvValue(process.env.REDIS_URL) || "redis://localhost:6379";
 
 export const redis = createClient({
   url: REDIS_URL,

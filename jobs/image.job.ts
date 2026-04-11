@@ -1,4 +1,4 @@
-import { imageProcessingQueue, type ImageProcessingJobMetadata } from "../queues/image.queue.js";
+import type { ImageProcessingJobMetadata } from "../queues/image.queue.js";
 
 export interface EnqueueImageProcessingJobInput {
   itemId: string;
@@ -23,6 +23,7 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const MAX_IMAGE_SIZE_BYTES = Number(process.env.IMAGE_MAX_SIZE_BYTES ?? 10 * 1024 * 1024);
+const ENABLE_IMAGE_PROCESSING_QUEUE = process.env.ENABLE_IMAGE_PROCESSING_QUEUE !== "false";
 
 export async function enqueueImageProcessingJob(
   input: EnqueueImageProcessingJobInput
@@ -45,6 +46,17 @@ export async function enqueueImageProcessingJob(
   });
 
   const queueJobId = `image-processing-${input.itemId}`;
+
+  if (!ENABLE_IMAGE_PROCESSING_QUEUE) {
+    console.log(`ℹ️ Image processing queue disabled, skipping queue job for ${input.itemId}`);
+    return {
+      jobId: queueJobId,
+      queueJobId,
+      imageCount: serializedImages.length,
+    };
+  }
+
+  const { imageProcessingQueue } = await import("../queues/image.queue.js");
 
   await imageProcessingQueue.add(
     "remove-background",

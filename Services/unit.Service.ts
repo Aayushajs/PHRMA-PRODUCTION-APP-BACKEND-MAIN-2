@@ -36,7 +36,7 @@ class ParentUnitServices {
 
             const newParentUnit = await parentUnitModel.create({
                 ...parentUnitData,
-                createdBy: req.user?._id,
+                createdBy: req.user?._id as any,
                 createdAt: new Date()
             });
 
@@ -145,7 +145,7 @@ class ChildUnitServices {
 
             const newChildUnit = await childUnit.create({
                 ...childUnitData,
-                createdBy: req.user?._id,
+                createdBy: req.user?._id as any,
                 createdAt: new Date()
             });
 

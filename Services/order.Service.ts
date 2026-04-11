@@ -260,7 +260,7 @@ class OrderService {
                     billingAddress: billingAddress || deliveryAddress,
                     paymentMethod,
                     paymentStatus,
-                    paymentId,
+                    paymentId: paymentId || undefined,
                     orderStatus: OrderStatus.PENDING,
                     shippingMethod,
                     orderDate: new Date(),

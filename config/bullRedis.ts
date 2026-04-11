@@ -3,7 +3,12 @@ import dotenv from "dotenv";
 
 dotenv.config({ path: "./config/.env" });
 
-const redisUrl = process.env.REDIS_URL?.trim();
+const sanitizeEnvValue = (value: string | undefined): string | undefined => {
+  if (!value) return undefined;
+  return value.trim().replace(/^['\"]|['\"]$/g, "");
+};
+
+const redisUrl = sanitizeEnvValue(process.env.REDIS_URL);
 
 if (!redisUrl) {
   throw new Error("REDIS_URL is not set. Add REDIS_URL to config/.env before starting API/worker.");

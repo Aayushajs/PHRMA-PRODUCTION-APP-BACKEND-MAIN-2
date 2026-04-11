@@ -8,6 +8,8 @@ import dns from "node:dns";
 
 dns.setServers(["8.8.8.8", "1.1.1.1"]);
 
+const ENABLE_NOTIFICATION_QUEUE = process.env.ENABLE_NOTIFICATION_QUEUE !== 'false';
+
 const PORT = parseInt(process.env.PORT || '5002', 10);
 
 const httpServer = createServer(app);
@@ -20,12 +22,16 @@ httpServer.listen(PORT, '0.0.0.0', async () => {
   console.log(`Server is running on http://localhost:${PORT}`);
   console.log(`WebSocket server ready on ws://localhost:${PORT}`);
   
-  // Start notification queue worker
-  try {
-    await startNotificationWorker();
-    console.log('✅ Notification queue worker started');
-  } catch (error) {
-    console.error('❌ Failed to start notification queue worker:', error);
+  // Start notification queue worker only when enabled
+  if (ENABLE_NOTIFICATION_QUEUE) {
+    try {
+      await startNotificationWorker();
+      console.log('✅ Notification queue worker started');
+    } catch (error) {
+      console.error('❌ Failed to start notification queue worker:', error);
+    }
+  } else {
+    console.log('⏭️ Notification queue worker skipped (ENABLE_NOTIFICATION_QUEUE=false)');
   }
   
   // Start license expiry cron job
